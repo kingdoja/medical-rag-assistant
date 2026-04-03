@@ -1,0 +1,19 @@
+version: v0.1
+project: PathoMind Medical Knowledge and Quality Assistant
+current_phase: <phase-name>
+current_goal: <goal-summary>
+status: active
+recent_executor: <executor-name>
+last_updated: YYYY-MM-DD
+todo:
+  - <next-task-1>
+  - <next-task-2>
+completed:
+  - <completed-task-1>
+  - <completed-task-2>
+blocked:
+  - <blocked-item-if-any>
+notes:
+  - <important-note-1>
+  - <important-note-2>
+

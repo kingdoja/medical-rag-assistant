@@ -1,0 +1,42 @@
+version: v0.1
+project: PathoMind Medical Knowledge and Quality Assistant
+current_phase: demo-data-and-scenarios
+current_goal: 完成首轮 6 份核心资料下载并验证 dry-run 识别，准备真实导入
+status: active
+recent_executor: codex
+last_updated: 2026-04-03
+todo:
+  - 复制并填写 `config/settings.medical_demo.local.yaml`
+  - 将 demo-data 导入 collection `medical_demo_v01`
+  - 跑通 S1、S2、S4、S5、S6、S7 首轮验证
+  - 医疗化 MCP tool 命名与文案
+  - 让 Dashboard 首页与主 README 的医疗定位对齐
+completed:
+  - 建立 docs/specs/medical-assistant 真源目录
+  - 迁移产品简报到 PRODUCT_BRIEF.md
+  - 迁移开发规范到 DEVELOPMENT_SPEC.md
+  - 建立 PRD、DEMO_DATA_CHECKLIST、DEMO_SCENARIOS
+  - 建立 agent 读取入口与状态文件
+  - 建立项目内 .agents/skills/medical-assistant 闭环 skill
+  - 完成根 README 的双层定位重写
+  - 将 README_FULL.md 调整为技术深读版附录
+  - 完成 skill、README、展示层索引与 git 状态的收尾校验
+  - 在 DEVELOPMENT_SPEC 中固化 6 步项目路线与当前阶段定义
+  - 将 DEMO_DATA_CHECKLIST 扩展为可执行的公开数据包方案
+  - 将 DEMO_SCENARIOS 扩展为 v0.1 的 12 题标准演示题集
+  - 新增 DEMO_DATA_SOURCES 与 DEMO_SCENARIO_MAPPING 两份 agent 可消费真源文档
+  - 建立 demo-data/ 工作区骨架与 sources 登记表
+  - 下载首轮 6 份核心公开资料到 demo-data
+  - 用 py310 解释器完成 demo-data 的 ingest dry-run 识别
+  - 提供医疗 demo 最小化本地配置模板
+blocked:
+  - 当前尚未提供可用的 `embedding.api_key`，真实 ingest / query 前需补有效配置
+notes:
+  - 项目内 skill 当前只服务医疗方向 spec，不做跨项目抽象
+  - 简历目录仅保留展示材料，不再承担真源职责
+  - 根 README 负责招聘与产品定位，README_FULL.md 负责底层架构补充
+  - 仓库内正式 Markdown 链接统一使用相对路径，避免依赖本地绝对路径
+  - 当前优先级已从“文档与协作层”切换到“MVP 演示实现层”
+  - v0.1 首轮公开数据包采用“病理 / 检验科近邻场景”策略，先用 WHO / Leica / Roche 官方公开资料跑通演示
+  - 默认 `python` 解释器不兼容当前脚本语法，实际执行应优先使用 `C:\\ProgramData\\Anaconda3\\envs\\py310\\python.exe`
+  - 建议优先使用 `config/settings.medical_demo.local.yaml`，首轮只需填 `embedding.api_key`

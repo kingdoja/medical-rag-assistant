@@ -1,0 +1,17 @@
+name: medical-assistant
+description: Execute, validate, and sync the PathoMind medical assistant project strictly against docs/specs/medical-assistant.
+triggers:
+  - medical assistant
+  - pathomind
+  - 医疗知识助手
+  - 医疗质控助手
+  - 按 spec 执行
+  - 按 spec 校验
+  - 更新执行状态
+default_mode: execute
+source_of_truth: docs/specs/medical-assistant
+showcase_dir: 简历/项目改造方案-医疗知识助手
+write_back:
+  - docs/specs/medical-assistant/EXECUTION_STATUS.yaml
+  - docs/specs/medical-assistant/CHANGELOG.md
+

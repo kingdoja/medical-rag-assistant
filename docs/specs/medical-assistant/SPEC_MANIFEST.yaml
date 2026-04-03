@@ -1,0 +1,97 @@
+version: v0.1
+project: PathoMind Medical Knowledge and Quality Assistant
+source_of_truth: docs/specs/medical-assistant
+documents:
+  - id: PRODUCT_BRIEF
+    path: docs/specs/medical-assistant/PRODUCT_BRIEF.md
+    purpose: 产品定位、场景、求职叙事
+    priority: high
+    depends_on: []
+    owner: product
+    status: active
+    version: v0.1
+  - id: PRD
+    path: docs/specs/medical-assistant/PRD.md
+    purpose: 功能范围、验收标准、版本边界
+    priority: high
+    depends_on:
+      - PRODUCT_BRIEF
+    owner: product
+    status: active
+    version: v0.1
+  - id: DEVELOPMENT_SPEC
+    path: docs/specs/medical-assistant/DEVELOPMENT_SPEC.md
+    purpose: 开发、测试、发布规范
+    priority: high
+    depends_on:
+      - PRODUCT_BRIEF
+      - PRD
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: DEMO_DATA_CHECKLIST
+    path: docs/specs/medical-assistant/DEMO_DATA_CHECKLIST.md
+    purpose: demo 数据准备与入库前检查
+    priority: medium
+    depends_on:
+      - PRODUCT_BRIEF
+      - PRD
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: DEMO_DATA_SOURCES
+    path: docs/specs/medical-assistant/DEMO_DATA_SOURCES.md
+    purpose: demo 数据真实公开来源清单
+    priority: medium
+    depends_on:
+      - DEMO_DATA_CHECKLIST
+      - PRD
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: DEMO_SCENARIOS
+    path: docs/specs/medical-assistant/DEMO_SCENARIOS.md
+    purpose: 标准演示题集与回归场景
+    priority: medium
+    depends_on:
+      - PRD
+      - DEVELOPMENT_SPEC
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: DEMO_SCENARIO_MAPPING
+    path: docs/specs/medical-assistant/DEMO_SCENARIO_MAPPING.md
+    purpose: 标准题集与真实 demo 文档映射
+    priority: medium
+    depends_on:
+      - DEMO_DATA_SOURCES
+      - DEMO_SCENARIOS
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: AGENT_RUNBOOK
+    path: docs/specs/medical-assistant/AGENT_RUNBOOK.md
+    purpose: agent 执行协议
+    priority: high
+    depends_on:
+      - SPEC_MANIFEST
+      - EXECUTION_STATUS
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: EXECUTION_STATUS
+    path: docs/specs/medical-assistant/EXECUTION_STATUS.yaml
+    purpose: 当前状态真源
+    priority: high
+    depends_on: []
+    owner: engineering
+    status: active
+    version: v0.1
+  - id: CHANGELOG
+    path: docs/specs/medical-assistant/CHANGELOG.md
+    purpose: 变更记录
+    priority: medium
+    depends_on: []
+    owner: engineering
+    status: active
+    version: v0.1
