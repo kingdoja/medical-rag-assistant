@@ -12,6 +12,7 @@ the underlying text splitting implementation, ensuring no external dependencies.
 """
 
 import pytest
+from typing import List
 from unittest.mock import Mock
 
 from src.core.types import Document, Chunk
@@ -31,7 +32,7 @@ class FakeSplitter(BaseSplitter):
         """Initialize with ignored parameters for compatibility."""
         pass
     
-    def split_text(self, text: str) -> list[str]:
+    def split_text(self, text: str) -> List[str]:
         """Split text by double newlines (paragraph-based splitting)."""
         # Simple splitting for testing: split on double newlines
         paragraphs = text.split("\n\n")

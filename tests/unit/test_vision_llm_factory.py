@@ -6,7 +6,7 @@ and the BaseVisionLLM abstract interface using a fake implementation.
 
 import pytest
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, List
 
 from src.libs.llm.base_llm import ChatResponse, Message
 from src.libs.llm.base_vision_llm import BaseVisionLLM, ImageInput
@@ -48,7 +48,7 @@ class FakeVisionLLM(BaseVisionLLM):
         self,
         text: str,
         image: ImageInput,
-        messages: Optional[list[Message]] = None,
+        messages: Optional[List[Message]] = None,
         trace: Optional[Any] = None,
         **kwargs: Any,
     ) -> ChatResponse:

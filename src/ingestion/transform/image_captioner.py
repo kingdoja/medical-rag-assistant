@@ -239,12 +239,14 @@ class ImageCaptioner(BaseTransform):
         max_workers = min(DEFAULT_MAX_WORKERS, len(images_to_caption))
         logger.debug(f"Generating captions for {len(images_to_caption)} images (max_workers={max_workers})")
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        futures = {}
+        try:
             futures = {
                 executor.submit(self._get_caption, img_id, img_path, trace): img_id
                 for img_id, img_path in images_to_caption.items()
             }
-            
+
             for future in as_completed(futures):
                 img_id = futures[future]
                 try:
@@ -253,3 +255,13 @@ class ImageCaptioner(BaseTransform):
                         logger.debug(f"Caption generated for {img_id}")
                 except Exception as e:
                     logger.error(f"Failed to generate caption for {img_id}: {e}")
+        except KeyboardInterrupt:
+            for f in futures.keys():
+                f.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            try:
+                executor.shutdown(wait=True)
+            except Exception:
+                pass

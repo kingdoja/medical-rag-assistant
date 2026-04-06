@@ -243,10 +243,11 @@ class TestResponseBuilder:
             collection="docs",
         )
         
-        assert response.is_empty is True
+        # Empty results now trigger low_relevance boundary check
+        assert response.metadata["boundary_refusal"] is True
+        assert response.metadata["boundary_type"] == "low_relevance"
         assert len(response.citations) == 0
-        assert "未找到相关结果" in response.content
-        assert "建议" in response.content
+        assert "未找到相关结果" in response.content or "边界说明" in response.content
     
     def test_content_contains_citation_markers(
         self,
@@ -386,7 +387,9 @@ class TestResponseBuilder:
             collection="my_docs",
         )
         
-        assert "my_docs" in response.content
+        # Empty results now trigger boundary refusal
+        assert response.metadata["boundary_refusal"] is True
+        assert response.metadata["collection"] == "my_docs"
 
 
 # =============================================================================
@@ -540,3 +543,265 @@ class TestResponseBuilderIntegration:
         for citation in response.citations:
             if citation.metadata:
                 assert "chunk_index" not in citation.metadata
+
+    def test_diagnostic_query_returns_boundary_refusal(
+        self,
+        sample_retrieval_results: List[RetrievalResult],
+    ) -> None:
+        """Diagnostic-style queries should return a refusal response."""
+        builder = ResponseBuilder()
+
+        response = builder.build(
+            results=sample_retrieval_results,
+            query="直接告诉我这个结果是不是某种疾病",
+            collection="medical_demo_v01",
+        )
+
+        assert response.is_empty is False
+        assert response.metadata["boundary_refusal"] is True
+        assert response.metadata["boundary_type"] == "diagnostic"
+        assert "不提供疾病诊断" in response.content or "诊断性" in response.content
+        assert "SOP" in response.content or "指南" in response.content
+        assert len(response.citations) <= 3
+
+    def test_non_diagnostic_query_does_not_trigger_boundary_refusal(
+        self,
+        sample_retrieval_results: List[RetrievalResult],
+    ) -> None:
+        """Normal retrieval queries should still return standard search results."""
+        builder = ResponseBuilder()
+
+        response = builder.build(
+            results=sample_retrieval_results,
+            query="某类标本接收后的标准处理流程是什么？",
+            collection="medical_demo_v01",
+        )
+
+        assert response.metadata.get("boundary_refusal") is None
+        assert "检索结果" in response.content
+
+
+# =============================================================================
+# Boundary Validation Tests
+# =============================================================================
+
+class TestBoundaryValidation:
+    """Tests for enhanced boundary validation functionality."""
+    
+    def test_validate_query_predictive_patterns(self) -> None:
+        """Test that predictive queries are detected and refused."""
+        builder = ResponseBuilder()
+        
+        predictive_queries = [
+            "预测下个月的趋势",
+            "未来会发生什么",
+            "最常见的问题是什么",
+            "这个设备将会出现什么故障",
+        ]
+        
+        for query in predictive_queries:
+            check = builder.validate_query(query)
+            assert check.is_valid is False
+            assert check.boundary_type == "predictive"
+            assert check.detected_pattern is not None
+            assert len(check.suggested_alternatives) > 0
+    
+    def test_validate_query_diagnostic_patterns(self) -> None:
+        """Test that diagnostic queries are detected and refused."""
+        builder = ResponseBuilder()
+        
+        diagnostic_queries = [
+            "这是不是某种疾病",
+            "帮我诊断一下",
+            "是什么病",
+        ]
+        
+        for query in diagnostic_queries:
+            check = builder.validate_query(query)
+            assert check.is_valid is False
+            assert check.boundary_type == "diagnostic"
+            assert check.detected_pattern is not None
+    
+    def test_validate_query_normal_queries(self) -> None:
+        """Test that normal queries pass validation."""
+        builder = ResponseBuilder()
+        
+        normal_queries = [
+            "标本处理流程是什么",
+            "设备操作规范",
+            "质量控制要求",
+        ]
+        
+        for query in normal_queries:
+            check = builder.validate_query(query)
+            assert check.is_valid is True
+            assert check.boundary_type is None
+    
+    def test_validate_response_low_relevance(self) -> None:
+        """Test that low-relevance results trigger boundary check."""
+        builder = ResponseBuilder()
+        
+        low_relevance_results = [
+            RetrievalResult(
+                chunk_id="test_001",
+                score=0.15,  # Below 0.3 threshold
+                text="Irrelevant content",
+                metadata={"source_path": "test.pdf"},
+            )
+        ]
+        
+        check = builder.validate_response("test query", low_relevance_results)
+        assert check.is_valid is False
+        assert check.boundary_type == "low_relevance"
+        assert len(check.suggested_alternatives) > 0
+    
+    def test_validate_response_empty_results(self) -> None:
+        """Test that empty results trigger boundary check."""
+        builder = ResponseBuilder()
+        
+        check = builder.validate_response("test query", [])
+        assert check.is_valid is False
+        assert check.boundary_type == "low_relevance"
+        assert check.detected_pattern == "no_results"
+    
+    def test_validate_response_high_relevance(self) -> None:
+        """Test that high-relevance results pass validation."""
+        builder = ResponseBuilder()
+        
+        high_relevance_results = [
+            RetrievalResult(
+                chunk_id="test_001",
+                score=0.85,  # Above 0.3 threshold
+                text="Relevant content",
+                metadata={"source_path": "test.pdf"},
+            )
+        ]
+        
+        check = builder.validate_response("test query", high_relevance_results)
+        assert check.is_valid is True
+        assert check.boundary_type is None
+    
+    def test_validate_response_custom_threshold(self) -> None:
+        """Test custom relevance threshold."""
+        builder = ResponseBuilder()
+        
+        results = [
+            RetrievalResult(
+                chunk_id="test_001",
+                score=0.4,
+                text="Content",
+                metadata={"source_path": "test.pdf"},
+            )
+        ]
+        
+        # Should pass with default threshold (0.3)
+        check1 = builder.validate_response("test", results)
+        assert check1.is_valid is True
+        
+        # Should fail with higher threshold (0.5)
+        check2 = builder.validate_response("test", results, relevance_threshold=0.5)
+        assert check2.is_valid is False
+        assert check2.boundary_type == "low_relevance"
+    
+    def test_build_with_predictive_query(
+        self,
+        sample_retrieval_results: List[RetrievalResult],
+    ) -> None:
+        """Test that predictive queries return refusal response."""
+        builder = ResponseBuilder()
+        
+        response = builder.build(
+            results=sample_retrieval_results,
+            query="预测下个月的趋势",
+            collection="test",
+        )
+        
+        assert response.metadata["boundary_refusal"] is True
+        assert response.metadata["boundary_type"] == "predictive"
+        assert "预测性分析请求" in response.content
+        assert len(response.citations) <= 3
+    
+    def test_build_with_low_relevance(self) -> None:
+        """Test that low-relevance results return refusal response."""
+        builder = ResponseBuilder()
+        
+        low_relevance_results = [
+            RetrievalResult(
+                chunk_id="test_001",
+                score=0.15,
+                text="Irrelevant content",
+                metadata={"source_path": "test.pdf"},
+            )
+        ]
+        
+        response = builder.build(
+            results=low_relevance_results,
+            query="test query",
+            collection="test",
+        )
+        
+        assert response.metadata["boundary_refusal"] is True
+        assert response.metadata["boundary_type"] == "low_relevance"
+        assert "相关度较低" in response.content
+    
+    def test_boundary_check_to_dict(self) -> None:
+        """Test BoundaryCheck serialization."""
+        from src.core.response.response_builder import BoundaryCheck
+        
+        check = BoundaryCheck(
+            is_valid=False,
+            boundary_type="predictive",
+            refusal_message="Test message",
+            suggested_alternatives=["Alt 1", "Alt 2"],
+            confidence=0.85,
+            detected_pattern="预测",
+        )
+        
+        check_dict = check.to_dict()
+        
+        assert check_dict["is_valid"] is False
+        assert check_dict["boundary_type"] == "predictive"
+        assert check_dict["refusal_message"] == "Test message"
+        assert len(check_dict["suggested_alternatives"]) == 2
+        assert check_dict["confidence"] == 0.85
+        assert check_dict["detected_pattern"] == "预测"
+    
+    def test_refusal_message_generation(self) -> None:
+        """Test that refusal messages are properly generated."""
+        builder = ResponseBuilder()
+        
+        # Test diagnostic refusal
+        diag_msg = builder._generate_diagnostic_refusal_message("帮我诊断")
+        assert "诊断性" in diag_msg
+        assert "PathoMind" in diag_msg
+        
+        # Test predictive refusal
+        pred_msg = builder._generate_predictive_refusal_message("预测趋势")
+        assert "预测性" in pred_msg
+        assert "事实性信息" in pred_msg
+        
+        # Test low-relevance message
+        low_rel_msg = builder._generate_low_relevance_message("test", 0.15)
+        assert "相关度较低" in low_rel_msg
+        # Check for percentage format (could be 15% or 15.00%)
+        assert "15" in low_rel_msg
+    
+    def test_alternative_suggestions(self) -> None:
+        """Test that alternative suggestions are provided."""
+        builder = ResponseBuilder()
+        
+        # Diagnostic alternatives
+        diag_alts = builder._get_diagnostic_alternatives()
+        assert len(diag_alts) > 0
+        assert any("SOP" in alt or "指南" in alt for alt in diag_alts)
+        
+        # Predictive alternatives
+        pred_alts = builder._get_predictive_alternatives()
+        assert len(pred_alts) > 0
+        assert any("历史" in alt or "数据" in alt for alt in pred_alts)
+        
+        # Low-relevance alternatives
+        low_rel_alts = builder._get_low_relevance_alternatives()
+        assert len(low_rel_alts) > 0
+        assert any("关键词" in alt for alt in low_rel_alts)
+

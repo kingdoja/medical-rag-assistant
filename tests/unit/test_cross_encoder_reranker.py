@@ -1,6 +1,6 @@
 """Tests for Cross-Encoder based Reranker implementation."""
 
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from unittest.mock import Mock, patch
 
 import pytest
@@ -20,7 +20,7 @@ class MockCrossEncoder:
         self.call_count = 0
         self.last_pairs = None
     
-    def predict(self, pairs: List[tuple[str, str]]) -> List[float]:
+    def predict(self, pairs: List[Tuple[str, str]]) -> List[float]:
         """Return deterministic scores for testing.
         
         Scoring strategy: score based on presence of keywords in passage.

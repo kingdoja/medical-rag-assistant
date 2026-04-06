@@ -34,6 +34,21 @@ _SCRIPT_DIR = Path(__file__).resolve().parent
 _REPO_ROOT = _SCRIPT_DIR.parent
 sys.path.insert(0, str(_REPO_ROOT))
 
+
+def _require_python_310() -> None:
+    """Fail fast with a clear message when interpreter is too old."""
+    if sys.version_info < (3, 10):
+        version = ".".join(str(v) for v in sys.version_info[:3])
+        print(
+            f"[FAIL] Python 3.10+ is required, current interpreter is {version}.",
+            file=sys.stderr,
+        )
+        print(
+            "[INFO] Please activate .venv and run this command again.",
+            file=sys.stderr,
+        )
+        raise SystemExit(2)
+
 # Set UTF-8 encoding for Windows console
 if sys.platform == "win32":
     import io
@@ -43,6 +58,8 @@ if sys.platform == "win32":
 # Ensure project root is in path for imports
 project_root = Path(__file__).parent.parent
 sys.path.insert(0, str(project_root))
+
+_require_python_310()
 
 from src.core.settings import load_settings, Settings
 from src.core.trace import TraceContext, TraceCollector

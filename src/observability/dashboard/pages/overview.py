@@ -1,13 +1,7 @@
-"""Overview page – system configuration and data statistics.
-
-Displays:
-- Component configuration cards (LLM, Embedding, VectorStore …)
-- Collection statistics (document count, chunk count, image count)
-"""
+"""Medical demo overview page."""
 
 from __future__ import annotations
 
-from pathlib import Path
 from typing import Any, Dict
 
 import streamlit as st
@@ -16,23 +10,20 @@ from src.observability.dashboard.services.config_service import ConfigService
 
 
 def _safe_collection_stats() -> Dict[str, Any]:
-    """Attempt to load collection statistics from ChromaDB.
-
-    Returns empty dict on failure so the page still renders.
-    """
+    """Attempt to load collection statistics from ChromaDB."""
     try:
-        from src.core.settings import load_settings, resolve_path
         import chromadb
         from chromadb.config import Settings as ChromaSettings
 
+        from src.core.settings import load_settings, resolve_path
+
         settings = load_settings()
-        persist_dir = str(
-            resolve_path(settings.vector_store.persist_directory)
-        )
+        persist_dir = str(resolve_path(settings.vector_store.persist_directory))
         client = chromadb.PersistentClient(
             path=persist_dir,
             settings=ChromaSettings(anonymized_telemetry=False, allow_reset=True),
         )
+
         stats: Dict[str, Any] = {}
         for col in client.list_collections():
             name = col.name if hasattr(col, "name") else str(col)
@@ -44,11 +35,54 @@ def _safe_collection_stats() -> Dict[str, Any]:
 
 
 def render() -> None:
-    """Render the Overview page."""
-    st.header("📊 System Overview")
+    """Render the PathoMind medical demo overview page."""
+    st.header("🩺 PathoMind Medical Demo")
+    st.caption(
+        "面向病理科 / 检验科内部知识管理、培训问答与流程质控场景的知识助手。"
+        "这里优先展示演示 readiness、资料范围和系统边界。"
+    )
 
-    # ── Component configuration cards ──────────────────────────────
-    st.subheader("🔧 Component Configuration")
+    st.markdown(
+        """
+**当前定位**
+- 资料类型：指南、SOP、培训材料、设备手册
+- 核心能力：真实 ingest、中文检索、引用可追溯
+- 风险边界：不做自动诊断，不输出高风险临床结论
+"""
+    )
+
+    stats = _safe_collection_stats()
+
+    from src.core.settings import resolve_path
+
+    traces_path = resolve_path("logs/traces.jsonl")
+    trace_count = 0
+    if traces_path.exists():
+        trace_count = sum(1 for _ in traces_path.open(encoding="utf-8"))
+
+    medical_collection = stats.get("medical_demo_v01", {})
+    chunk_count = medical_collection.get("chunk_count", "?")
+
+    top_cols = st.columns(4)
+    with top_cols[0]:
+        st.metric("Demo Collection", "medical_demo_v01")
+    with top_cols[1]:
+        st.metric("Indexed Chunks", chunk_count)
+    with top_cols[2]:
+        st.metric("Collections", len(stats))
+    with top_cols[3]:
+        st.metric("Recorded Traces", trace_count)
+
+    st.markdown(
+        """
+**推荐 3 分钟演示链路**
+1. `S1`：展示 SOP / 规范可检索且有依据
+2. `S4` 或 `S5`：展示设备 / 图文资料不是只会回 WHO 指南
+3. `S7`：展示边界能力，拒绝诊断类请求并拉回资料范围
+"""
+    )
+
+    st.subheader("🔧 Medical Demo Configuration")
 
     try:
         config_service = ConfigService()
@@ -63,37 +97,29 @@ def render() -> None:
             st.markdown(f"**{card.name}**")
             st.caption(f"Provider: `{card.provider}`  \nModel: `{card.model}`")
             with st.expander("Details"):
-                for k, v in card.extra.items():
-                    st.text(f"{k}: {v}")
+                for key, value in card.extra.items():
+                    st.text(f"{key}: {value}")
 
-    # ── Collection statistics ──────────────────────────────────────
-    st.subheader("📁 Collection Statistics")
+    st.subheader("📁 Knowledge Collections")
 
-    stats = _safe_collection_stats()
     if stats:
         stat_cols = st.columns(min(len(stats), 4))
         for idx, (name, info) in enumerate(sorted(stats.items())):
             with stat_cols[idx % len(stat_cols)]:
                 count = info.get("chunk_count", "?")
                 st.metric(label=name, value=count)
-                if count == 0 or count == "?":
+                if name == "medical_demo_v01":
+                    st.caption("Primary medical demo collection")
+                elif count in (0, "?"):
                     st.caption("⚠️ Empty")
     else:
         st.warning(
             "**No collections found or ChromaDB unavailable.** "
-            "Go to the Ingestion Manager page to upload and ingest documents."
+            "Go to the Ingestion Center page to upload and ingest documents."
         )
 
-    # ── Trace file statistics ──────────────────────────────────────
-    st.subheader("📈 Trace Statistics")
-
-    from src.core.settings import resolve_path
-    traces_path = resolve_path("logs/traces.jsonl")
-    if traces_path.exists():
-        line_count = sum(1 for _ in traces_path.open(encoding="utf-8"))
-        if line_count > 0:
-            st.metric("Total traces", line_count)
-        else:
-            st.info("No traces recorded yet. Run a query or ingestion first.")
+    st.subheader("📈 Trace Activity")
+    if trace_count > 0:
+        st.metric("Total traces", trace_count)
     else:
-        st.info("No traces recorded yet. Run a query or ingestion first.")
+        st.info("No traces recorded yet. Run an ingestion or query first.")

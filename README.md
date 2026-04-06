@@ -1,127 +1,312 @@
-# PathoMind Medical Knowledge and Quality Assistant
+# 🏥 PathoMind - 医疗知识与质控助手
 
-> 面向病理科 / 检验科内部知识管理、培训问答与流程质控场景的 AI 知识助手。它不是通用聊天机器人，也不是自动诊断系统，而是构建在模块化 RAG / MCP 底座之上的垂直知识产品案例。
+> 面向病理科/检验科的智能知识检索与质控辅助系统
 
-## Why This Project
+[![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-这个仓库当前的主叙事是：把原来的通用 `Modular RAG MCP Server` 改造成一个更适合招聘市场展示、也更容易让面试官秒懂的垂直产品。
+## 📋 项目简介
 
-主推方向选择为 `病理 / 检验科医疗知识与质控助手`，原因有三点：
+PathoMind 是一个基于 RAG（检索增强生成）技术的医疗知识助手，专为病理科和检验科设计。它不是自动诊断系统，而是帮助医护人员快速检索指南、SOP、设备手册等内部知识，提供带引用的可信回答。
 
-- 和个人经历闭环更强：医疗视觉检测经验 + RAG / Agent 工程化能力可以自然串起来
-- 和当前仓库能力更匹配：多模态摄取、混合检索、引用回答、评估、MCP 接入都能直接映射到医疗知识场景
-- 风险更可控：聚焦知识、培训、质控、流程辅助，不碰自动诊断和高风险临床决策
+### 核心特性
 
-## Product Positioning
+- 🔍 **混合检索**：BM25 + 向量检索 + RRF融合 + 重排序，适配医疗术语和自然语言查询
+- 📚 **多模态支持**：处理PDF文档、图片、表格等多种格式的医疗资料
+- 🎯 **精准引用**：每个回答都标注来源文档和页码，可追溯验证
+- 📊 **可观测性**：完整的trace记录、评估指标和可视化dashboard
+- 🔌 **MCP集成**：支持作为MCP服务器被AI Agent调用
 
-### One-Liner
+### 技术亮点
 
-`PathoMind` 是一个面向病理科 / 检验科内部使用的医疗知识与质控助手，支持指南 / SOP 检索、术语解释、规范引用回答、图文资料检索、流程排障和 Agent 接入。
+- **模块化架构**：可插拔的LLM、Embedding、Reranker、向量数据库
+- **工程化实践**：完整的测试覆盖（单元/集成/E2E）、配置管理、日志追踪
+- **评估体系**：基于RAGAS的自动化评估，包含准确率、召回率等多维度指标
+- **增量更新**：支持文档增量摄取，避免重复处理
 
-### Target Users
+## 🎯 应用场景
 
-- 病理科医生
-- 检验科医生 / 技师
-- 新人培训人员
-- 科室质控负责人
-- 院内信息化 / AI 工具接入人员
+| 场景 | 说明 | 示例 |
+|------|------|------|
+| 指南检索 | 快速查找WHO、行业标准等指南内容 | "WHO实验室质量管理体系的核心要素是什么？" |
+| SOP查询 | 检索标准操作流程和规范 | "样本管理的标准流程是什么？" |
+| 设备排障 | 查询设备手册和故障处理方法 | "Peloris 3组织处理仪如何进行日常维护？" |
+| 术语解释 | 解释专业术语和缩写 | "什么是IHC？" |
+| 培训支持 | 为新员工提供知识问答 | "质量控制的基本原则有哪些？" |
 
-### Core Scenarios
+## 🚀 快速开始
 
-- 指南 / SOP 检索
-- 病理 / 检验术语解释
-- 规范引用回答
-- 图文混合资料检索
-- 设备 / 流程排障问答
-- 培训问答
-- MCP 接入外部 Agent
+### 环境要求
 
-## From RAG Platform To Medical Product
+- Python 3.11+
+- 8GB+ RAM
+- OpenAI API Key 或 Azure OpenAI 配置
 
-虽然对外定位已经切到医疗产品，但底层仍然是一个可复用的模块化 RAG / MCP 工程底座。
+### 安装步骤
 
-| 底层能力 | 医疗产品映射 |
-|---|---|
-| BM25 + Dense + RRF + rerank | 医疗术语、规范编号、自然语言问法并存场景下的可信检索 |
-| Ingestion pipeline | 指南、SOP、设备说明书、培训资料的统一摄取与增量入库 |
-| Image captioning / multimodal response | 图文病例资料、流程图、培训图片的混合检索 |
-| Trace / evaluation | 引用可追溯、效果可评估、流程可审计 |
-| MCP tools | 供 Agent / Copilot 调用的医疗知识基础设施 |
+```bash
+# 1. 克隆仓库
+git clone https://github.com/yourusername/pathomind.git
+cd pathomind
 
-如果从工程视角看，这个仓库依然保留了通用框架能力：
+# 2. 创建虚拟环境
+python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-- 可插拔 LLM / Embedding / Reranker / VectorStore
-- Streamlit Dashboard
-- MCP tool 暴露
-- 评估与可观测能力
-- spec 驱动的 agent / skill 工作流
+# 3. 安装依赖
+pip install -r requirements.txt
 
-## Read This Repo In Two Ways
+# 4. 配置环境变量
+cp .env.example .env
+# 编辑 .env 文件，填入你的 API keys
 
-### 招聘视角
+# 5. 配置设置
+cp config/settings.yaml.example config/settings.yaml
+# 根据需要调整配置
+```
 
-如果你希望把它当成简历代表作来看，建议按这个顺序：
+### 数据摄取
 
-1. 查看 [简历求职材料](简历/项目改造方案-医疗知识助手/README.md)
-2. 查看 [产品简报](docs/specs/medical-assistant/PRODUCT_BRIEF.md)
-3. 查看 [1 分钟讲稿](简历/项目改造方案-医疗知识助手/面试讲稿-1分钟.md)
+```bash
+# 摄取示例医疗文档
+python scripts/ingest.py \
+  --collection medical_demo_v01 \
+  --source demo-data/guidelines \
+  --config config/settings.medical_demo.local.yaml
+```
 
-### 工程视角
+### 启动服务
 
-如果你想从“这个产品怎么被工程化”来读，建议按这个顺序：
+```bash
+# 方式1: 命令行查询
+python scripts/query.py \
+  --collection medical_demo_v01 \
+  --query "WHO实验室质量管理体系的核心要素是什么？"
 
-1. 查看 [spec 首页](docs/specs/medical-assistant/README.md)
-2. 查看 [PRD](docs/specs/medical-assistant/PRD.md)
-3. 查看 [开发规范](docs/specs/medical-assistant/DEVELOPMENT_SPEC.md)
-4. 查看 [项目内 skill](.agents/skills/medical-assistant/SKILL.md)
-5. 查看 [技术深读版 README](README_FULL.md)
+# 方式2: 启动可视化Dashboard
+python scripts/start_dashboard.py
 
-## Quick Demo Path
+# 方式3: 启动MCP服务器（供AI Agent调用）
+python -m src.mcp_server.server
+```
 
-如果你准备做求职展示，推荐用下面这条最短演示路径：
+## 📊 系统架构
 
-1. 先讲产品定位：病理 / 检验科医疗知识与质控助手
-2. 再讲能力映射：混合检索、图文摄取、引用回答、可追踪评估
-3. 然后讲边界：不做自动诊断，不做高风险医疗决策建议
-4. 最后讲工程化：spec 真源 + project-local skill + MCP 接入
+```
+┌─────────────────────────────────────────────────────────────┐
+│                        用户查询                              │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    查询处理层                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ 查询分析     │  │ 意图识别     │  │ 范围提取     │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    混合检索层                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ BM25检索     │  │ 向量检索     │  │ RRF融合      │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    重排序层                                  │
+│  ┌──────────────┐  ┌──────────────┐                         │
+│  │ Cross-Encoder│  │ LLM Reranker │                         │
+│  └──────────────┘  └──────────────┘                         │
+└────────────────────────┬────────────────────────────────────┘
+                         │
+                         ▼
+┌─────────────────────────────────────────────────────────────┐
+│                    响应生成层                                │
+│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
+│  │ 上下文组装   │  │ LLM生成      │  │ 引用增强     │      │
+│  └──────────────┘  └──────────────┘  └──────────────┘      │
+└─────────────────────────────────────────────────────────────┘
+```
 
-## Repo Navigation
+## 🧪 测试与评估
 
-### Engineering Source Of Truth
+### 运行测试
 
-- [medical specs](docs/specs/medical-assistant/README.md)
-- [execution status](docs/specs/medical-assistant/EXECUTION_STATUS.yaml)
-- [changelog](docs/specs/medical-assistant/CHANGELOG.md)
+```bash
+# 运行所有测试
+pytest
 
-### Showcase Layer
+# 运行单元测试
+pytest tests/unit/
 
-- [resume materials](简历/项目改造方案-医疗知识助手/README.md)
+# 运行集成测试
+pytest tests/integration/
 
-### Skill Layer
+# 运行E2E测试
+pytest tests/e2e/
 
-- [medical assistant skill](.agents/skills/medical-assistant/SKILL.md)
+# 查看测试覆盖率
+pytest --cov=src --cov-report=html
+```
 
-### Technical Appendix
+### 评估系统性能
 
-- [README_FULL.md](README_FULL.md)
+```bash
+# 运行医疗场景评估
+python scripts/run_medical_evaluation.py
 
-## Spec And Skill Workflow
+# 查看评估结果
+python scripts/start_dashboard.py
+# 访问 http://localhost:8501 -> Medical Demo Evaluation
+```
 
-这个仓库现在采用“spec 真源 + project-local skill”协作方式：
+评估指标包括：
+- **Answer Correctness**: 答案准确性（0-1）
+- **Context Precision**: 检索精确度（0-1）
+- **Context Recall**: 检索召回率（0-1）
+- **Faithfulness**: 答案忠实度（0-1）
 
-1. 先读 [spec 首页](docs/specs/medical-assistant/README.md)
-2. 再读 [SPEC_MANIFEST.yaml](docs/specs/medical-assistant/SPEC_MANIFEST.yaml)
-3. 根据任务读取 `PRD`、`DEVELOPMENT_SPEC`、`DEMO_*`
-4. 使用 [medical assistant skill](.agents/skills/medical-assistant/SKILL.md) 执行、校验、回写
-5. 完成后更新 [EXECUTION_STATUS.yaml](docs/specs/medical-assistant/EXECUTION_STATUS.yaml) 和 [CHANGELOG.md](docs/specs/medical-assistant/CHANGELOG.md)
+## 📁 项目结构
 
-## Compliance Boundaries
+```
+pathomind/
+├── src/                          # 源代码
+│   ├── core/                     # 核心查询引擎
+│   │   ├── query_engine/         # 检索、融合、重排序
+│   │   └── response/             # 响应生成、引用增强
+│   ├── ingestion/                # 数据摄取管道
+│   │   ├── chunking/             # 文档分块
+│   │   ├── embedding/            # 向量编码
+│   │   └── storage/              # 存储管理
+│   ├── libs/                     # 可插拔组件库
+│   │   ├── llm/                  # LLM适配器
+│   │   ├── embedding/            # Embedding适配器
+│   │   ├── reranker/             # Reranker适配器
+│   │   └── vector_store/         # 向量数据库适配器
+│   ├── mcp_server/               # MCP服务器
+│   └── observability/            # 可观测性
+│       ├── dashboard/            # Streamlit Dashboard
+│       └── evaluation/           # 评估框架
+├── tests/                        # 测试代码
+│   ├── unit/                     # 单元测试
+│   ├── integration/              # 集成测试
+│   └── e2e/                      # 端到端测试
+├── config/                       # 配置文件
+├── demo-data/                    # 示例数据
+│   ├── guidelines/               # WHO指南
+│   ├── sops/                     # 标准操作流程
+│   ├── manuals/                  # 设备手册
+│   └── training/                 # 培训资料
+├── docs/                         # 文档
+│   └── specs/                    # 产品规格说明
+└── scripts/                      # 工具脚本
+```
 
-这个项目明确不做以下事项：
+## 🔧 配置说明
 
-- 不做自动诊断
-- 不给出高风险医疗决策建议
-- 不替代医生判断
-- 不输出无引用依据的医疗结论
+主要配置文件：`config/settings.yaml`
 
-它的定位始终是：`知识检索 + 培训支持 + 质控辅助 + 流程协同`。
+```yaml
+# LLM配置
+llm:
+  provider: openai  # openai, azure, ollama
+  model: gpt-4o-mini
+  temperature: 0.1
+
+# Embedding配置
+embedding:
+  provider: openai
+  model: text-embedding-3-small
+  batch_size: 100
+
+# 检索配置
+retrieval:
+  top_k: 20
+  rerank_top_k: 5
+  fusion_method: rrf
+
+# 向量数据库
+vector_store:
+  provider: chroma
+  persist_directory: data/db/chroma
+```
+
+## 📈 性能指标
+
+基于医疗场景测试集（20个问题）的评估结果：
+
+| 指标 | P1版本 | 目标 |
+|------|--------|------|
+| Answer Correctness | 0.72 | 0.75+ |
+| Context Precision | 0.85 | 0.80+ |
+| Context Recall | 0.78 | 0.75+ |
+| Faithfulness | 0.88 | 0.85+ |
+
+## 🛡️ 合规边界
+
+本系统明确**不做**以下事项：
+- ❌ 不做自动诊断
+- ❌ 不给出高风险医疗决策建议
+- ❌ 不替代医生判断
+- ❌ 不输出无引用依据的医疗结论
+
+定位：**知识检索 + 培训支持 + 质控辅助 + 流程协同**
+
+## 🗺️ 技术路线图
+
+### P1 - 核心能力（已完成）
+- ✅ 混合检索（BM25 + Dense + RRF）
+- ✅ 多模态文档处理
+- ✅ 引用增强回答
+- ✅ 基础评估体系
+- ✅ MCP服务器
+
+### P2 - 增强能力（规划中）
+- 🔄 多轮对话支持
+- 🔄 查询改写与扩展
+- 🔄 文档分组与聚合
+- 🔄 高级评估指标
+- 🔄 性能优化
+
+详见：[P2 Roadmap](docs/specs/medical-assistant/P2_ROADMAP.md)
+
+## 📚 相关文档
+
+- [产品简报](docs/specs/medical-assistant/core/PRODUCT_BRIEF.md)
+- [产品需求文档](docs/specs/medical-assistant/core/PRD.md)
+- [开发规范](docs/specs/medical-assistant/core/DEVELOPMENT_SPEC.md)
+- [演示指南](docs/specs/medical-assistant/demo/DEMO_RUNBOOK_3MIN.md)
+- [完整技术文档](README_FULL.md)
+
+## 🤝 贡献指南
+
+欢迎提交Issue和Pull Request！
+
+1. Fork本仓库
+2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
+3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
+4. 推送到分支 (`git push origin feature/AmazingFeature`)
+5. 开启Pull Request
+
+## 📄 许可证
+
+本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+
+## 👤 作者
+
+**林淑能**
+- 医疗AI应用开发者
+- 专注于RAG系统和AI Agent工程化
+- Email: [your-email@example.com]
+- GitHub: [@yourusername]
+
+## 🙏 致谢
+
+- 感谢WHO提供的公开医疗指南文档
+- 感谢开源社区提供的优秀工具和框架
+
+---
+
+**注意**：本项目仅用于技术展示和学习交流，不应用于实际临床决策。

@@ -3,10 +3,12 @@ Query Engine Module.
 
 This package contains the hybrid search engine components:
 - Query preprocessing
+- Query analysis (complexity and intent detection)
 - Dense retrieval (embedding-based)
 - Sparse retrieval (BM25)
 - Result fusion (RRF)
 - Reranking
+- Knowledge base scope awareness
 """
 
 from src.core.query_engine.query_processor import (
@@ -16,6 +18,11 @@ from src.core.query_engine.query_processor import (
     DEFAULT_STOPWORDS,
     CHINESE_STOPWORDS,
     ENGLISH_STOPWORDS,
+)
+from src.core.query_engine.query_analyzer import (
+    QueryAnalyzer,
+    QueryAnalysis,
+    create_query_analyzer,
 )
 from src.core.query_engine.dense_retriever import (
     DenseRetriever,
@@ -35,6 +42,15 @@ from src.core.query_engine.hybrid_search import (
     HybridSearchResult,
     create_hybrid_search,
 )
+from src.core.query_engine.document_grouper import (
+    DocumentGrouper,
+    DocumentGroup,
+    create_document_grouper,
+)
+from src.core.query_engine.scope_provider import (
+    ScopeProvider,
+    ScopeInfo,
+)
 
 __all__ = [
     "QueryProcessor",
@@ -43,6 +59,9 @@ __all__ = [
     "DEFAULT_STOPWORDS",
     "CHINESE_STOPWORDS",
     "ENGLISH_STOPWORDS",
+    "QueryAnalyzer",
+    "QueryAnalysis",
+    "create_query_analyzer",
     "DenseRetriever",
     "create_dense_retriever",
     "SparseRetriever",
@@ -53,4 +72,9 @@ __all__ = [
     "HybridSearchConfig",
     "HybridSearchResult",
     "create_hybrid_search",
+    "DocumentGrouper",
+    "DocumentGroup",
+    "create_document_grouper",
+    "ScopeProvider",
+    "ScopeInfo",
 ]

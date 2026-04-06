@@ -11,6 +11,7 @@ Required environment variables:
 
 import os
 import pytest
+from typing import Tuple
 from unittest.mock import Mock
 
 from src.core.settings import Settings, load_settings
@@ -140,7 +141,7 @@ def create_settings_for_provider(provider: str) -> Settings:
 
 # Helper function to check provider availability
 
-def is_provider_available(provider: str) -> tuple[bool, str]:
+def is_provider_available(provider: str) -> Tuple[bool, str]:
     """Check if provider credentials are available.
     
     Returns:

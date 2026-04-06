@@ -10,10 +10,14 @@ import os
 from typing import Any, List, Optional
 
 from src.libs.embedding.base_embedding import BaseEmbedding
+from src.observability.logger import get_logger
 
 
 class OpenAIEmbeddingError(RuntimeError):
     """Raised when OpenAI Embeddings API call fails."""
+
+
+logger = get_logger(__name__)
 
 
 class OpenAIEmbedding(BaseEmbedding):
@@ -37,6 +41,7 @@ class OpenAIEmbedding(BaseEmbedding):
     """
     
     DEFAULT_BASE_URL = "https://api.openai.com/v1"
+    DASHSCOPE_MAX_BATCH_SIZE = 10
     
     def __init__(
         self,
@@ -97,6 +102,79 @@ class OpenAIEmbedding(BaseEmbedding):
         
         # Store any additional kwargs for future use
         self._extra_config = kwargs
+        self._batch_limit_logged = False
+
+    def _get_provider_max_batch_size(self) -> Optional[int]:
+        """Return provider-specific embedding batch size limit when known."""
+        base_url = (self.base_url or "").lower()
+        if "dashscope.aliyuncs.com" in base_url:
+            return self.DASHSCOPE_MAX_BATCH_SIZE
+        return None
+
+    def _embed_once(
+        self,
+        texts: List[str],
+        trace: Optional[Any] = None,
+        **kwargs: Any,
+    ) -> List[List[float]]:
+        """Execute a single embeddings API request for one batch."""
+        # Import OpenAI client (lazy import to avoid dependency at module level)
+        try:
+            from openai import OpenAI
+        except ImportError as e:
+            raise RuntimeError(
+                "OpenAI Python package not installed. "
+                "Install with: pip install openai"
+            ) from e
+
+        # Initialize OpenAI client
+        client_kwargs = {
+            "api_key": self.api_key,
+            "base_url": self.base_url,
+        }
+        # Azure-compatible mode: add api-version query param and api-key header
+        if self._use_azure_auth and self.api_version:
+            client_kwargs["default_query"] = {"api-version": self.api_version}
+            client_kwargs["default_headers"] = {"api-key": self.api_key}
+
+        client = OpenAI(**client_kwargs)
+
+        # Prepare API call parameters
+        api_params = {
+            "input": texts,
+            "model": self.model,
+        }
+
+        # Add dimensions if specified (only for text-embedding-3-* models)
+        # text-embedding-ada-002 does NOT support the dimensions parameter
+        dimensions = kwargs.get("dimensions", self.dimensions)
+        if dimensions is not None and self.model.startswith("text-embedding-3"):
+            api_params["dimensions"] = dimensions
+
+        # Call OpenAI API
+        try:
+            response = client.embeddings.create(**api_params)
+        except Exception as e:
+            raise OpenAIEmbeddingError(
+                f"OpenAI Embeddings API call failed: {e}"
+            ) from e
+
+        # Extract embeddings from response
+        # Response format: response.data is a list of objects with .embedding attribute
+        try:
+            embeddings = [item.embedding for item in response.data]
+        except (AttributeError, KeyError) as e:
+            raise OpenAIEmbeddingError(
+                f"Failed to parse OpenAI Embeddings API response: {e}"
+            ) from e
+
+        # Verify output matches input length
+        if len(embeddings) != len(texts):
+            raise OpenAIEmbeddingError(
+                f"Output length mismatch: expected {len(texts)}, got {len(embeddings)}"
+            )
+
+        return embeddings
     
     def embed(
         self,
@@ -121,64 +199,31 @@ class OpenAIEmbedding(BaseEmbedding):
         """
         # Validate input
         self.validate_texts(texts)
-        
-        # Import OpenAI client (lazy import to avoid dependency at module level)
-        try:
-            from openai import OpenAI
-        except ImportError as e:
-            raise RuntimeError(
-                "OpenAI Python package not installed. "
-                "Install with: pip install openai"
-            ) from e
-        
-        # Initialize OpenAI client
-        client_kwargs = {
-            "api_key": self.api_key,
-            "base_url": self.base_url,
-        }
-        # Azure-compatible mode: add api-version query param and api-key header
-        if self._use_azure_auth and self.api_version:
-            client_kwargs["default_query"] = {"api-version": self.api_version}
-            client_kwargs["default_headers"] = {"api-key": self.api_key}
-        
-        client = OpenAI(**client_kwargs)
-        
-        # Prepare API call parameters
-        api_params = {
-            "input": texts,
-            "model": self.model,
-        }
-        
-        # Add dimensions if specified (only for text-embedding-3-* models)
-        # text-embedding-ada-002 does NOT support the dimensions parameter
-        dimensions = kwargs.get("dimensions", self.dimensions)
-        if dimensions is not None and self.model.startswith("text-embedding-3"):
-            api_params["dimensions"] = dimensions
-        
-        # Call OpenAI API
-        try:
-            response = client.embeddings.create(**api_params)
-        except Exception as e:
-            raise OpenAIEmbeddingError(
-                f"OpenAI Embeddings API call failed: {e}"
-            ) from e
-        
-        # Extract embeddings from response
-        # Response format: response.data is a list of objects with .embedding attribute
-        try:
-            embeddings = [item.embedding for item in response.data]
-        except (AttributeError, KeyError) as e:
-            raise OpenAIEmbeddingError(
-                f"Failed to parse OpenAI Embeddings API response: {e}"
-            ) from e
-        
-        # Verify output matches input length
-        if len(embeddings) != len(texts):
-            raise OpenAIEmbeddingError(
-                f"Output length mismatch: expected {len(texts)}, got {len(embeddings)}"
+        max_batch_size = self._get_provider_max_batch_size()
+        if max_batch_size is None or len(texts) <= max_batch_size:
+            return self._embed_once(texts=texts, trace=trace, **kwargs)
+
+        if not self._batch_limit_logged:
+            logger.info(
+                "Embedding provider batch limit detected (%s items/request). "
+                "Splitting %s inputs into smaller requests.",
+                max_batch_size,
+                len(texts),
             )
-        
-        return embeddings
+            self._batch_limit_logged = True
+
+        all_embeddings: List[List[float]] = []
+        for batch_start in range(0, len(texts), max_batch_size):
+            batch_end = min(batch_start + max_batch_size, len(texts))
+            batch_texts = texts[batch_start:batch_end]
+            batch_embeddings = self._embed_once(
+                texts=batch_texts,
+                trace=trace,
+                **kwargs,
+            )
+            all_embeddings.extend(batch_embeddings)
+
+        return all_embeddings
     
     def get_dimension(self) -> Optional[int]:
         """Get the embedding dimension for the configured model.

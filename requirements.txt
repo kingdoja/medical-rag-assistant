@@ -1,0 +1,22 @@
+# Core dependencies
+pyyaml>=6.0
+langchain-text-splitters>=0.3.0
+chromadb>=0.4.0
+mcp>=1.0.0
+jieba>=0.42
+markitdown[pdf]>=0.1.0
+streamlit>=1.30.0
+ragas>=0.1.0
+datasets>=2.0.0
+
+# LLM providers
+openai>=1.0
+
+# Development dependencies (optional)
+# Uncomment if needed for development
+# pytest>=7.0
+# pytest-cov>=4.0
+# pytest-asyncio>=0.21
+# pytest-mock>=3.14
+# ruff>=0.1.0
+# mypy>=1.0

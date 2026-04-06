@@ -15,7 +15,7 @@ from __future__ import annotations
 import hashlib
 import logging
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 try:
     from markitdown import MarkItDown
@@ -183,7 +183,7 @@ class PdfLoader(BaseLoader):
         pdf_path: Path,
         text_content: str,
         doc_hash: str
-    ) -> tuple[str, List[Dict[str, Any]]]:
+    ) -> Tuple[str, List[Dict[str, Any]]]:
         """Extract images from PDF and insert placeholders.
         
         Uses PyMuPDF to extract images, save them to disk, and insert

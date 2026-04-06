@@ -20,7 +20,23 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
-from mcp import types
+try:
+    from mcp import types
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    # Create placeholder types for when mcp is not available
+    class types:
+        class TextContent:
+            def __init__(self, type: str, text: str):
+                self.type = type
+                self.text = text
+        
+        class ImageContent:
+            def __init__(self, type: str, data: str, mimeType: str):
+                self.type = type
+                self.data = data
+                self.mimeType = mimeType
 
 from src.core.types import RetrievalResult
 

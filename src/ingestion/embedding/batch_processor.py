@@ -162,13 +162,17 @@ class BatchProcessor:
                 successful_chunks += len(batch)
                 
             except Exception as e:
-                # Record failure but continue with remaining batches
+                # Stage-5 depends on dense vectors for every chunk.
+                # Fail fast here to surface connectivity/model issues clearly.
                 failed_chunks += len(batch)
                 if trace:
                     trace.record_stage(
                         f"batch_{batch_idx}_error",
                         {"error": str(e), "batch_size": len(batch)}
                     )
+                raise RuntimeError(
+                    f"Encoding failed at batch {batch_idx + 1}/{batch_count}: {e}"
+                ) from e
             
             batch_duration = time.time() - batch_start
             
@@ -184,6 +188,13 @@ class BatchProcessor:
                 )
         
         total_time = time.time() - start_time
+
+        # Defensive check: vector/chunk alignment is required for upsert.
+        if len(dense_vectors) != len(chunks):
+            raise RuntimeError(
+                f"Dense encoding incomplete: expected {len(chunks)} vectors, got {len(dense_vectors)}. "
+                "Check embedding connectivity and API credentials."
+            )
         
         # Record overall processing statistics
         if trace:

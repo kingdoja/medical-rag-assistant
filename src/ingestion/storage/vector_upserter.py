@@ -15,7 +15,7 @@ Design Principles:
 """
 
 import hashlib
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Tuple
 
 from src.core.types import Chunk
 from src.core.settings import Settings
@@ -169,7 +169,7 @@ class VectorUpserter:
     
     def upsert_batch(
         self,
-        batches: List[tuple[List[Chunk], List[List[float]]]],
+        batches: List[Tuple[List[Chunk], List[List[float]]]],
         trace: Optional[Any] = None,
     ) -> List[str]:
         """Upsert multiple batches of chunks and vectors.

@@ -15,7 +15,7 @@ Design Principles:
 
 import re
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Pattern, Set
+from typing import Any, Dict, List, Optional, Pattern, Set, Tuple
 
 import jieba
 
@@ -165,7 +165,7 @@ class QueryProcessor:
         normalized = " ".join(query.split())
         return normalized
     
-    def _extract_filters(self, query: str) -> tuple[Dict[str, Any], str]:
+    def _extract_filters(self, query: str) -> Tuple[Dict[str, Any], str]:
         """Extract filter syntax from query.
         
         Supports syntax like: "collection:api-docs keyword1 keyword2"

@@ -16,6 +16,7 @@ Design Principles:
 from __future__ import annotations
 
 import logging
+import re
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
@@ -26,6 +27,7 @@ from src.core.types import ProcessedQuery, RetrievalResult
 if TYPE_CHECKING:
     from src.core.query_engine.dense_retriever import DenseRetriever
     from src.core.query_engine.fusion import RRFFusion
+    from src.core.query_engine.query_analyzer import QueryAnalyzer
     from src.core.query_engine.query_processor import QueryProcessor
     from src.core.query_engine.sparse_retriever import SparseRetriever
     from src.core.settings import Settings
@@ -91,6 +93,7 @@ class HybridSearchResult:
         sparse_error: Error message if sparse retrieval failed
         used_fallback: Whether fallback mode was used
         processed_query: The processed query (for debugging)
+        query_analysis: Query analysis result (for routing decisions)
     """
     results: List[RetrievalResult] = field(default_factory=list)
     dense_results: Optional[List[RetrievalResult]] = None
@@ -99,6 +102,7 @@ class HybridSearchResult:
     sparse_error: Optional[str] = None
     used_fallback: bool = False
     processed_query: Optional[ProcessedQuery] = None
+    query_analysis: Optional[Any] = None  # QueryAnalysis type
 
 
 class HybridSearch:
@@ -140,6 +144,7 @@ class HybridSearch:
         self,
         settings: Optional[Settings] = None,
         query_processor: Optional[QueryProcessor] = None,
+        query_analyzer: Optional[QueryAnalyzer] = None,
         dense_retriever: Optional[DenseRetriever] = None,
         sparse_retriever: Optional[SparseRetriever] = None,
         fusion: Optional[RRFFusion] = None,
@@ -150,6 +155,7 @@ class HybridSearch:
         Args:
             settings: Application settings for extracting configuration.
             query_processor: QueryProcessor for preprocessing queries.
+            query_analyzer: QueryAnalyzer for detecting query complexity and intent.
             dense_retriever: DenseRetriever for semantic search.
             sparse_retriever: SparseRetriever for keyword search.
             fusion: RRFFusion for combining results.
@@ -161,6 +167,7 @@ class HybridSearch:
             is unavailable or fails.
         """
         self.query_processor = query_processor
+        self.query_analyzer = query_analyzer
         self.dense_retriever = dense_retriever
         self.sparse_retriever = sparse_retriever
         self.fusion = fusion
@@ -171,6 +178,7 @@ class HybridSearch:
         logger.info(
             f"HybridSearch initialized: dense={self.dense_retriever is not None}, "
             f"sparse={self.sparse_retriever is not None}, "
+            f"query_analyzer={self.query_analyzer is not None}, "
             f"config={self.config}"
         )
     
@@ -236,7 +244,30 @@ class HybridSearch:
         
         effective_top_k = top_k if top_k is not None else self.config.fusion_top_k
         
+        # Start timing for performance logging
+        _search_start = time.monotonic()
+        
         logger.debug(f"HybridSearch: query='{query[:50]}...', top_k={effective_top_k}")
+        
+        # Step 0: Analyze query (if analyzer available)
+        query_analysis = None
+        if self.query_analyzer is not None:
+            _t0 = time.monotonic()
+            query_analysis = self.query_analyzer.analyze(query)
+            _elapsed = (time.monotonic() - _t0) * 1000.0
+            if trace is not None:
+                trace.record_stage("query_analysis", {
+                    "method": "query_analyzer",
+                    "complexity": query_analysis.complexity,
+                    "intent": query_analysis.intent,
+                    "requires_multi_doc": query_analysis.requires_multi_doc,
+                    "detected_keywords": query_analysis.detected_keywords,
+                }, elapsed_ms=_elapsed)
+            logger.debug(
+                f"Query analysis: complexity={query_analysis.complexity}, "
+                f"intent={query_analysis.intent}, "
+                f"requires_multi_doc={query_analysis.requires_multi_doc}"
+            )
         
         # Step 1: Process query
         _t0 = time.monotonic()
@@ -251,6 +282,10 @@ class HybridSearch:
         
         # Merge explicit filters with query-extracted filters
         merged_filters = self._merge_filters(processed_query.filters, filters)
+        device_tokens = self._extract_device_tokens(processed_query.original_query)
+        fusion_candidate_top_k = effective_top_k
+        if device_tokens:
+            fusion_candidate_top_k = max(effective_top_k, min(30, effective_top_k * 3))
         
         # Step 2: Run retrievals
         dense_results, sparse_results, dense_error, sparse_error = self._run_retrievals(
@@ -281,20 +316,55 @@ class HybridSearch:
             # Both succeeded but returned empty
             fused_results = []
         else:
-            # Step 4: Fuse results
-            fused_results = self._fuse_results(
-                dense_results=dense_results or [],
-                sparse_results=sparse_results or [],
-                top_k=effective_top_k,
-                trace=trace,
+            # Step 4: Fuse results (with document grouping for multi-doc queries)
+            # Check if this is a multi-document query that needs diversity
+            use_document_grouping = (
+                query_analysis is not None and 
+                query_analysis.requires_multi_doc and
+                self.fusion is not None and
+                hasattr(self.fusion, 'fuse_with_document_grouping') and
+                self.fusion.document_grouper is not None
             )
+            
+            if use_document_grouping:
+                # Use document grouping for multi-document scenarios
+                fused_results = self._fuse_results_with_grouping(
+                    dense_results=dense_results or [],
+                    sparse_results=sparse_results or [],
+                    top_k=fusion_candidate_top_k,
+                    trace=trace,
+                )
+            else:
+                # Standard fusion for simple queries
+                fused_results = self._fuse_results(
+                    dense_results=dense_results or [],
+                    sparse_results=sparse_results or [],
+                    top_k=fusion_candidate_top_k,
+                    trace=trace,
+                )
         
         # Step 5: Apply post-fusion metadata filters (if any)
         if merged_filters and self.config.metadata_filter_post:
             fused_results = self._apply_metadata_filters(fused_results, merged_filters)
+
+        # Step 5.5: Apply lightweight metadata-aware boosts for device/model queries.
+        fused_results = self._apply_query_specific_boosts(
+            fused_results,
+            processed_query.original_query,
+            trace=trace,
+        )
         
         # Step 6: Limit to top_k
         final_results = fused_results[:effective_top_k]
+        
+        # Step 7: Log performance metrics if needed
+        total_elapsed = (time.monotonic() - _search_start) * 1000.0
+        if total_elapsed > 5000:  # Log if > 5 seconds
+            self._log_performance_metrics(
+                query=query,
+                total_time=total_elapsed,
+                trace=trace,
+            )
         
         logger.debug(f"HybridSearch: returning {len(final_results)} results")
         
@@ -307,6 +377,7 @@ class HybridSearch:
                 sparse_error=sparse_error,
                 used_fallback=used_fallback,
                 processed_query=processed_query,
+                query_analysis=query_analysis,
             )
         
         return final_results
@@ -633,6 +704,77 @@ class HybridSearch:
             }, elapsed_ms=_elapsed)
         return fused
     
+    def _fuse_results_with_grouping(
+        self,
+        dense_results: List[RetrievalResult],
+        sparse_results: List[RetrievalResult],
+        top_k: int,
+        trace: Optional[Any],
+    ) -> List[RetrievalResult]:
+        """Fuse results with document grouping for multi-document queries.
+        
+        This method applies document grouping to ensure diversity across
+        source documents, which is important for comparison and aggregation queries.
+        
+        Args:
+            dense_results: Results from dense retrieval.
+            sparse_results: Results from sparse retrieval.
+            top_k: Number of results to return after fusion and grouping.
+            trace: Optional TraceContext.
+            
+        Returns:
+            Fused and grouped list of RetrievalResults with document diversity.
+        """
+        if self.fusion is None:
+            logger.warning("No fusion configured, using simple interleave")
+            return self._interleave_results(dense_results, sparse_results, top_k)
+        
+        # Build ranking lists for RRF
+        ranking_lists = []
+        if dense_results:
+            ranking_lists.append(dense_results)
+        if sparse_results:
+            ranking_lists.append(sparse_results)
+        
+        if not ranking_lists:
+            return []
+        
+        if len(ranking_lists) == 1:
+            # Only one source, no fusion needed
+            return ranking_lists[0][:top_k]
+        
+        _t0 = time.monotonic()
+        
+        # Use document grouping with tuned parameters for P1 scenarios
+        # - top_k_per_doc=2: Allow up to 2 chunks per document (reduced from 3)
+        # - min_docs=2: Ensure at least 2 different documents appear
+        fused = self.fusion.fuse_with_document_grouping(
+            ranking_lists=ranking_lists,
+            top_k=top_k,
+            top_k_per_doc=2,  # Limit chunks per document to increase diversity
+            min_docs=2,       # Ensure minimum 2 documents for multi-doc queries
+            trace=trace,
+        )
+        
+        _elapsed = (time.monotonic() - _t0) * 1000.0
+        if trace is not None:
+            trace.record_stage("fusion_with_grouping", {
+                "method": "rrf_with_document_grouping",
+                "input_lists": len(ranking_lists),
+                "top_k": top_k,
+                "top_k_per_doc": 2,
+                "min_docs": 2,
+                "result_count": len(fused),
+                "chunks": _snapshot_results(fused),
+            }, elapsed_ms=_elapsed)
+        
+        logger.debug(
+            f"Fusion with document grouping: {len(fused)} results "
+            f"(top_k={top_k}, top_k_per_doc=2, min_docs=2)"
+        )
+        
+        return fused
+    
     def _interleave_results(
         self,
         dense_results: List[RetrievalResult],
@@ -700,6 +842,83 @@ class HybridSearch:
                 filtered.append(result)
         
         return filtered
+
+    def _apply_query_specific_boosts(
+        self,
+        results: List[RetrievalResult],
+        query: str,
+        trace: Optional[Any] = None,
+    ) -> List[RetrievalResult]:
+        """Apply lightweight metadata-aware boosts for device/model queries."""
+        if not results:
+            return results
+
+        device_tokens = self._extract_device_tokens(query)
+        if not device_tokens:
+            return results
+
+        boosted_results: List[RetrievalResult] = []
+        boosted_count = 0
+
+        for result in results:
+            metadata = result.metadata or {}
+            metadata_text = " ".join(
+                [
+                    str(metadata.get("source_path", "")),
+                    str(metadata.get("title", "")),
+                ]
+            ).lower()
+            compact_metadata = re.sub(r"[^a-z0-9]+", "", metadata_text)
+
+            match_count = sum(1 for token in device_tokens if token in compact_metadata)
+            if match_count == 0:
+                boosted_results.append(result)
+                continue
+
+            boost = min(0.18, 0.06 * match_count)
+            boosted_count += 1
+            boosted_results.append(
+                RetrievalResult(
+                    chunk_id=result.chunk_id,
+                    score=result.score + boost,
+                    text=result.text,
+                    metadata={
+                        **metadata,
+                        "query_metadata_boost": round(boost, 4),
+                        "query_metadata_tokens": device_tokens,
+                    },
+                )
+            )
+
+        boosted_results.sort(key=lambda item: item.score, reverse=True)
+
+        if trace is not None and boosted_count > 0:
+            trace.record_stage(
+                "query_metadata_boost",
+                {
+                    "method": "device_name_metadata_boost",
+                    "tokens": device_tokens,
+                    "boosted_count": boosted_count,
+                    "chunks": _snapshot_results(boosted_results[:10]),
+                },
+            )
+
+        return boosted_results
+
+    def _extract_device_tokens(self, query: str) -> List[str]:
+        """Extract alphanumeric model/device tokens worth matching in metadata."""
+        tokens = re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", query or "")
+        normalized: List[str] = []
+        seen = set()
+        for token in tokens:
+            compact = re.sub(r"[^a-z0-9]+", "", token.lower())
+            if len(compact) < 4:
+                continue
+            if compact in seen:
+                continue
+            seen.add(compact)
+            normalized.append(compact)
+        return normalized
     
     def _matches_filters(
         self,
@@ -745,11 +964,43 @@ class HybridSearch:
                     return False
         
         return True
+    
+    def _log_performance_metrics(
+        self,
+        query: str,
+        total_time: float,
+        trace: Optional[Any] = None,
+    ) -> None:
+        """Log performance metrics when response time exceeds threshold.
+        
+        Args:
+            query: The search query
+            total_time: Total elapsed time in milliseconds
+            trace: Optional TraceContext with stage timings
+        """
+        log_entry = {
+            "event": "slow_query",
+            "query": query[:100],  # Truncate long queries
+            "total_time_ms": round(total_time, 2),
+            "threshold_ms": 5000,
+        }
+        
+        # Extract stage timings from trace if available
+        if trace is not None and hasattr(trace, 'stages'):
+            stage_times = {}
+            for stage in trace.stages:
+                stage_name = stage.get('stage', 'unknown')
+                elapsed = stage.get('elapsed_ms', 0)
+                stage_times[stage_name] = round(elapsed, 2)
+            log_entry["stage_times"] = stage_times
+        
+        logger.warning("Slow query detected: %s", log_entry)
 
 
 def create_hybrid_search(
     settings: Optional[Settings] = None,
     query_processor: Optional[QueryProcessor] = None,
+    query_analyzer: Optional[QueryAnalyzer] = None,
     dense_retriever: Optional[DenseRetriever] = None,
     sparse_retriever: Optional[SparseRetriever] = None,
     fusion: Optional[RRFFusion] = None,
@@ -757,11 +1008,12 @@ def create_hybrid_search(
     """Factory function to create HybridSearch with default components.
     
     This is a convenience function that creates a HybridSearch with
-    default RRFFusion if not provided.
+    default RRFFusion and QueryAnalyzer if not provided.
     
     Args:
         settings: Application settings.
         query_processor: QueryProcessor instance.
+        query_analyzer: QueryAnalyzer instance. If None, creates default.
         dense_retriever: DenseRetriever instance.
         sparse_retriever: SparseRetriever instance.
         fusion: RRFFusion instance. If None, creates default with k=60.
@@ -777,19 +1029,30 @@ def create_hybrid_search(
         ...     sparse_retriever=sparse_retriever,
         ... )
     """
+    # Create default query analyzer if not provided
+    if query_analyzer is None:
+        from src.core.query_engine.query_analyzer import QueryAnalyzer
+        query_analyzer = QueryAnalyzer()
+    
     # Create default fusion if not provided
     if fusion is None:
         from src.core.query_engine.fusion import RRFFusion
+        from src.core.query_engine.document_grouper import DocumentGrouper
+        
         rrf_k = 60
         if settings is not None:
             retrieval_config = getattr(settings, 'retrieval', None)
             if retrieval_config is not None:
                 rrf_k = getattr(retrieval_config, 'rrf_k', 60)
-        fusion = RRFFusion(k=rrf_k)
+        
+        # Create fusion with document grouper for P1 multi-document support
+        document_grouper = DocumentGrouper()
+        fusion = RRFFusion(k=rrf_k, document_grouper=document_grouper)
     
     return HybridSearch(
         settings=settings,
         query_processor=query_processor,
+        query_analyzer=query_analyzer,
         dense_retriever=dense_retriever,
         sparse_retriever=sparse_retriever,
         fusion=fusion,

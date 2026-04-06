@@ -77,13 +77,20 @@ class OpenAILLM(BaseLLM):
                 "OPENAI_API_KEY environment variable, or pass api_key parameter."
             )
         
-        # Azure-compatible mode detection
+        # Base URL / Azure-compatible mode detection
+        settings_base_url = getattr(settings.llm, 'base_url', None)
         azure_endpoint = getattr(settings.llm, 'azure_endpoint', None)
         self.api_version = getattr(settings.llm, 'api_version', None)
         
         if base_url:
             self.base_url = base_url
             self._use_azure_auth = False
+        elif settings_base_url:
+            # OpenAI-compatible mode from settings (e.g., DashScope compatible endpoint)
+            self.base_url = settings_base_url
+            self._use_azure_auth = False
+            # api-version is Azure-specific; avoid leaking it into compatible-mode requests.
+            self.api_version = None
         elif azure_endpoint:
             # Azure-compatible mode: construct deployment-based URL
             deployment = getattr(settings.llm, 'deployment_name', None) or self.model

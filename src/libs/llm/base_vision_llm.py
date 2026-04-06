@@ -14,7 +14,7 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Optional, Union
+from typing import Any, Optional, Union, Tuple
 
 from src.libs.llm.base_llm import ChatResponse, Message
 
@@ -143,7 +143,7 @@ class BaseVisionLLM(ABC):
     def preprocess_image(
         self,
         image: ImageInput,
-        max_size: Optional[tuple[int, int]] = None,
+        max_size: Optional[Tuple[int, int]] = None,
     ) -> ImageInput:
         """Preprocess image before sending to Vision LLM.
         

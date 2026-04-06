@@ -1,0 +1,111 @@
+# PathoMind - Configuration Example
+# Copy this file to settings.yaml and adjust according to your needs
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
+llm:
+  provider: "openai"  # Options: openai, azure, ollama, deepseek
+  model: "gpt-4o-mini"  # Recommended for cost-effectiveness
+  temperature: 0.1  # Low temperature for factual responses
+  max_tokens: 4096
+
+  # For Azure OpenAI (uncomment if using Azure)
+  # azure_endpoint: "https://your-resource.openai.azure.com/"
+  # deployment_name: "your-deployment-name"
+  # api_version: "2024-02-15-preview"
+
+  # For Ollama (uncomment if using local models)
+  # base_url: "http://localhost:11434"
+  # model: "llama2"
+
+# =============================================================================
+# Embedding Configuration
+# =============================================================================
+embedding:
+  provider: "openai"  # Options: openai, azure, ollama
+  model: "text-embedding-3-small"  # Cost-effective option
+  dimensions: 1536
+  batch_size: 100
+
+  # For Azure OpenAI (uncomment if using Azure)
+  # azure_endpoint: "https://your-resource.openai.azure.com/"
+  # deployment_name: "your-embedding-deployment"
+  # api_version: "2024-02-15-preview"
+
+# =============================================================================
+# Vision LLM Configuration (for Image Captioning)
+# =============================================================================
+vision_llm:
+  enabled: true  # Set to false to disable image processing
+  provider: "openai"  # Options: openai, azure, ollama
+  model: "gpt-4o"  # Supports vision capabilities
+  max_image_size: 2048  # Max dimension for image compression
+
+# =============================================================================
+# Vector Store Configuration
+# =============================================================================
+vector_store:
+  provider: "chroma"  # Options: chroma, qdrant, pinecone
+  persist_directory: "./data/db/chroma"
+  collection_name: "medical_knowledge"
+
+# =============================================================================
+# Retrieval Configuration
+# =============================================================================
+retrieval:
+  dense_top_k: 20  # Number of results from vector search
+  sparse_top_k: 20  # Number of results from BM25 search
+  fusion_top_k: 10  # Number of results after RRF fusion
+  rrf_k: 60  # RRF constant (higher = more balanced)
+
+# =============================================================================
+# Rerank Configuration
+# =============================================================================
+rerank:
+  enabled: true  # Enable reranking for better results
+  provider: "cross_encoder"  # Options: none, cross_encoder, llm
+  model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+  top_k: 5  # Final number of results after reranking
+
+# =============================================================================
+# Evaluation Configuration
+# =============================================================================
+evaluation:
+  enabled: true
+  provider: "ragas"  # Options: ragas, custom
+  metrics:
+    - "answer_correctness"
+    - "context_precision"
+    - "context_recall"
+    - "faithfulness"
+
+# =============================================================================
+# Observability Configuration
+# =============================================================================
+observability:
+  log_level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR
+  trace_enabled: true
+  trace_file: "./logs/traces.jsonl"
+  structured_logging: true
+
+# =============================================================================
+# Ingestion Configuration
+# =============================================================================
+ingestion:
+  chunk_size: 1000  # Characters per chunk
+  chunk_overlap: 200  # Overlap between chunks
+  splitter: "recursive"  # Options: recursive, semantic, fixed_length
+  batch_size: 100  # Batch size for embedding
+  
+  # Chunk Refiner Configuration
+  chunk_refiner:
+    use_llm: true  # Enable LLM-based chunk refinement
+    max_workers: 2  # Concurrent LLM calls
+    max_llm_chunks: 8  # Max chunks to refine per document
+  
+  # Metadata Enricher Configuration
+  metadata_enricher:
+    use_llm: true  # Enable LLM-based metadata enrichment
+    max_workers: 2  # Concurrent LLM calls
+    max_llm_chunks: 8  # Max chunks to enrich per document

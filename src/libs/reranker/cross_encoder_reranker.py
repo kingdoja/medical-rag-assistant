@@ -8,7 +8,7 @@ and API-based endpoints.
 from __future__ import annotations
 
 import logging
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.libs.reranker.base_reranker import BaseReranker
 
@@ -181,7 +181,7 @@ class CrossEncoderReranker(BaseReranker):
         self,
         query: str,
         candidates: List[Dict[str, Any]]
-    ) -> List[tuple[str, str]]:
+    ) -> List[Tuple[str, str]]:
         """Prepare (query, passage) pairs for scoring.
         
         Args:
@@ -202,7 +202,7 @@ class CrossEncoderReranker(BaseReranker):
     
     def _score_pairs(
         self,
-        pairs: List[tuple[str, str]],
+        pairs: List[Tuple[str, str]],
         trace: Optional[Any] = None
     ) -> List[float]:
         """Score (query, passage) pairs using the Cross-Encoder model.

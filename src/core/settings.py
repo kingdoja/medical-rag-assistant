@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
@@ -16,6 +17,7 @@ REPO_ROOT: Path = Path(__file__).resolve().parents[2]
 
 # Default absolute path to settings.yaml
 DEFAULT_SETTINGS_PATH: Path = REPO_ROOT / "config" / "settings.yaml"
+DEFAULT_ENV_PATH: Path = REPO_ROOT / ".env"
 
 
 def resolve_path(relative: Union[str, Path]) -> Path:
@@ -31,6 +33,43 @@ def resolve_path(relative: Union[str, Path]) -> Path:
     if p.is_absolute():
         return p
     return (REPO_ROOT / p).resolve()
+
+
+def _load_env_file(env_path: Path = DEFAULT_ENV_PATH) -> None:
+    """Load simple KEY=VALUE pairs from .env into process env.
+
+    Notes:
+    - Existing environment variables are not overwritten.
+    - Supports optional `export KEY=VALUE` lines.
+    - Ignores blank lines and comments.
+    """
+    if not env_path.exists():
+        return
+
+    for raw_line in env_path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):].strip()
+        if "=" not in line:
+            continue
+
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if not key:
+            continue
+
+        # Remove single or double quotes around value.
+        if len(value) >= 2 and (
+            (value.startswith('"') and value.endswith('"'))
+            or (value.startswith("'") and value.endswith("'"))
+        ):
+            value = value[1:-1]
+
+        if key not in os.environ:
+            os.environ[key] = value
 
 
 class SettingsError(ValueError):
@@ -312,6 +351,9 @@ def load_settings(path: str | Path | None = None) -> Settings:
         path: Path to settings YAML.  Defaults to
             ``<repo>/config/settings.yaml`` (absolute, CWD-independent).
     """
+    # Load .env once per process call path, without overriding already exported vars.
+    _load_env_file()
+
     settings_path = Path(path) if path is not None else DEFAULT_SETTINGS_PATH
     if not settings_path.is_absolute():
         settings_path = resolve_path(settings_path)

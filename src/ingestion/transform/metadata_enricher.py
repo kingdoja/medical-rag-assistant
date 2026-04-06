@@ -1,6 +1,7 @@
 """Metadata enrichment transform: rule-based + optional LLM enhancement."""
 
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Dict, Any, Tuple
 from pathlib import Path
@@ -17,6 +18,7 @@ logger = get_logger(__name__)
 
 # Default max parallel workers for LLM calls
 DEFAULT_MAX_WORKERS = 5
+DEFAULT_MAX_LLM_CHUNKS = 8
 
 
 class MetadataEnricher(BaseTransform):
@@ -60,6 +62,9 @@ class MetadataEnricher(BaseTransform):
         self._llm = llm
         self._prompt_template: Optional[str] = None
         self._prompt_path = prompt_path or str(resolve_path("config/prompts/metadata_enrichment.txt"))
+        self._llm_failure_lock = threading.Lock()
+        self._llm_failure_count = 0
+        self._llm_disabled_logged = False
         
         # Determine if LLM should be used
         enricher_config = {}
@@ -72,6 +77,21 @@ class MetadataEnricher(BaseTransform):
                 enricher_config = ingestion_config.get('metadata_enricher', {})
         
         self.use_llm = enricher_config.get('use_llm', False) if enricher_config else False
+        self.max_workers = int(enricher_config.get('max_workers', DEFAULT_MAX_WORKERS)) if enricher_config else DEFAULT_MAX_WORKERS
+        if self.max_workers <= 0:
+            self.max_workers = DEFAULT_MAX_WORKERS
+        max_llm_chunks = enricher_config.get('max_llm_chunks', DEFAULT_MAX_LLM_CHUNKS) if enricher_config else DEFAULT_MAX_LLM_CHUNKS
+        if isinstance(max_llm_chunks, int) and max_llm_chunks >= 0:
+            self.max_llm_chunks: Optional[int] = max_llm_chunks
+        else:
+            self.max_llm_chunks = DEFAULT_MAX_LLM_CHUNKS
+
+        logger.info(
+            "MetadataEnricher config: use_llm=%s, max_workers=%s, max_llm_chunks=%s",
+            self.use_llm,
+            self.max_workers,
+            self.max_llm_chunks,
+        )
         
     @property
     def llm(self) -> Optional[BaseLLM]:
@@ -101,12 +121,86 @@ class MetadataEnricher(BaseTransform):
         """
         if not chunks:
             return []
-        
-        # Process chunks in parallel if LLM is enabled
+
+        # Process chunks in parallel if LLM is enabled; optionally limit LLM scope.
         if self.use_llm and self.llm:
-            return self._transform_parallel(chunks, trace)
-        else:
-            return self._transform_sequential(chunks, trace)
+            if self.max_llm_chunks is None or self.max_llm_chunks >= len(chunks):
+                return self._transform_parallel(chunks, trace)
+
+            llm_count = self.max_llm_chunks
+            if llm_count <= 0:
+                logger.info("MetadataEnricher LLM scope limit is 0. Using rule-based enrichment only.")
+                return self._transform_sequential(chunks, trace)
+
+            logger.info(
+                f"MetadataEnricher LLM scope limited to first {llm_count}/{len(chunks)} chunks; "
+                "remaining chunks use rule-based enrichment."
+            )
+            llm_head = chunks[:llm_count]
+            rule_tail = chunks[llm_count:]
+
+            enriched_head = self._transform_parallel(llm_head, None)
+            enriched_tail = self._transform_rule_only(rule_tail)
+            merged = enriched_head + enriched_tail
+
+            if trace:
+                llm_enhanced_count = sum(1 for c in merged if c.metadata.get("enriched_by") == "llm")
+                rule_count = sum(1 for c in merged if c.metadata.get("enriched_by") == "rule")
+                trace.record_stage("metadata_enricher", {
+                    "total_chunks": len(chunks),
+                    "success_count": len(merged),
+                    "llm_enhanced_count": llm_enhanced_count,
+                    "fallback_count": rule_count,
+                    "use_llm": self.use_llm,
+                    "parallel": True,
+                    "max_workers": min(self.max_workers, max(1, len(llm_head))),
+                    "max_llm_chunks": self.max_llm_chunks,
+                })
+            return merged
+
+        return self._transform_sequential(chunks, trace)
+
+    def _transform_rule_only(self, chunks: List[Chunk]) -> List[Chunk]:
+        """Enrich chunks using only rule-based logic (no LLM calls)."""
+        enriched_chunks: List[Chunk] = []
+        for chunk in chunks:
+            try:
+                rule_metadata = self._rule_based_enrich(chunk.text)
+                final_metadata = {
+                    **(chunk.metadata or {}),
+                    **rule_metadata,
+                    'enriched_by': 'rule'
+                }
+                enriched_chunks.append(
+                    Chunk(
+                        id=chunk.id,
+                        text=chunk.text or "",
+                        metadata=final_metadata,
+                        source_ref=chunk.source_ref,
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to enrich chunk {chunk.id}: {e}")
+                text_preview = ""
+                if chunk.text:
+                    text_preview = chunk.text[:100] + '...' if len(chunk.text) > 100 else chunk.text
+                minimal_metadata = {
+                    **(chunk.metadata or {}),
+                    'title': 'Untitled',
+                    'summary': text_preview,
+                    'tags': [],
+                    'enriched_by': 'error',
+                    'enrich_error': str(e)
+                }
+                enriched_chunks.append(
+                    Chunk(
+                        id=chunk.id,
+                        text=chunk.text or "",
+                        metadata=minimal_metadata,
+                        source_ref=chunk.source_ref,
+                    )
+                )
+        return enriched_chunks
     
     def _enrich_single_chunk(
         self, 
@@ -182,25 +276,27 @@ class MetadataEnricher(BaseTransform):
         trace: Optional[TraceContext] = None
     ) -> List[Chunk]:
         """Process chunks in parallel using ThreadPoolExecutor."""
-        max_workers = min(DEFAULT_MAX_WORKERS, len(chunks))
+        max_workers = min(self.max_workers, len(chunks))
         enriched_chunks = [None] * len(chunks)
         llm_enhanced_count = 0
         fallback_count = 0
         
         logger.debug(f"Processing {len(chunks)} chunks in parallel (max_workers={max_workers})")
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        future_to_idx = {}
+        try:
             future_to_idx = {
                 executor.submit(self._enrich_single_chunk, chunk, trace): idx
                 for idx, chunk in enumerate(chunks)
             }
-            
+
             for future in as_completed(future_to_idx):
                 idx = future_to_idx[future]
                 try:
                     enriched_chunk, enriched_by, error = future.result()
                     enriched_chunks[idx] = enriched_chunk
-                    
+
                     if enriched_by == "llm":
                         llm_enhanced_count += 1
                     elif enriched_by == "rule" and error is None:
@@ -208,6 +304,16 @@ class MetadataEnricher(BaseTransform):
                 except Exception as e:
                     logger.error(f"Unexpected error in parallel enrichment: {e}")
                     enriched_chunks[idx] = chunks[idx]
+        except KeyboardInterrupt:
+            for f in future_to_idx.keys():
+                f.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            try:
+                executor.shutdown(wait=True)
+            except Exception:
+                pass
         
         success_count = sum(1 for c in enriched_chunks if c is not None)
         
@@ -502,7 +608,18 @@ class MetadataEnricher(BaseTransform):
             return metadata
             
         except Exception as e:
-            logger.warning(f"LLM enrichment failed: {e}")
+            with self._llm_failure_lock:
+                self._llm_failure_count += 1
+                if self._llm_failure_count >= 3 and self.use_llm:
+                    self.use_llm = False
+                    if not self._llm_disabled_logged:
+                        logger.warning(
+                            f"LLM enrichment failed ({self._llm_failure_count} times). "
+                            f"Disabling LLM enrichment for the remainder of this run. Last error: {e}"
+                        )
+                        self._llm_disabled_logged = True
+                elif not self._llm_disabled_logged:
+                    logger.warning(f"LLM enrichment failed: {e}")
             if trace:
                 trace.record_stage("llm_enrich", {
                     "success": False,

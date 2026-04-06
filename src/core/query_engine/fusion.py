@@ -46,6 +46,7 @@ class RRFFusion:
     Attributes:
         k: Smoothing constant for RRF formula (default: 60).
            Higher k gives more weight to lower-ranked documents.
+        document_grouper: Optional DocumentGrouper for multi-document scenarios.
     
     Example:
         >>> fusion = RRFFusion(k=60)
@@ -63,7 +64,11 @@ class RRFFusion:
     # Default smoothing constant as recommended in the original RRF paper
     DEFAULT_K = 60
     
-    def __init__(self, k: int = DEFAULT_K) -> None:
+    def __init__(
+        self, 
+        k: int = DEFAULT_K,
+        document_grouper: Optional[Any] = None,
+    ) -> None:
         """Initialize RRF fusion with configurable smoothing constant.
         
         Args:
@@ -71,6 +76,7 @@ class RRFFusion:
                - Must be a positive integer
                - Higher values reduce the importance of rank differences
                - Common values: 60 (original paper), 20, 100
+            document_grouper: Optional DocumentGrouper for multi-document scenarios.
         
         Raises:
             ValueError: If k is not a positive integer.
@@ -79,7 +85,8 @@ class RRFFusion:
             raise ValueError(f"k must be a positive integer, got {k}")
         
         self.k = k
-        logger.info(f"RRFFusion initialized with k={k}")
+        self.document_grouper = document_grouper
+        logger.info(f"RRFFusion initialized with k={k}, document_grouper={document_grouper is not None}")
     
     def fuse(
         self,
@@ -177,6 +184,89 @@ class RRFFusion:
         )
         
         return fused_results
+    
+    def fuse_with_document_grouping(
+        self,
+        ranking_lists: List[List[RetrievalResult]],
+        top_k: Optional[int] = None,
+        top_k_per_doc: int = 3,
+        min_docs: int = 2,
+        trace: Optional[Any] = None,
+    ) -> List[RetrievalResult]:
+        """Fuse results with document grouping for multi-document scenarios.
+        
+        This method first performs standard RRF fusion, then applies document
+        grouping to ensure diversity across source documents.
+        
+        Args:
+            ranking_lists: List of ranking lists to fuse.
+            top_k: Maximum number of results to return after grouping.
+            top_k_per_doc: Maximum chunks per document (default: 3).
+            min_docs: Minimum number of documents to include (default: 2).
+            trace: Optional TraceContext for observability.
+            
+        Returns:
+            Fused and grouped results with document diversity.
+            
+        Raises:
+            ValueError: If document_grouper is not configured.
+        """
+        if self.document_grouper is None:
+            raise ValueError(
+                "Document grouper not configured. "
+                "Initialize RRFFusion with document_grouper parameter."
+            )
+        
+        # First, perform standard RRF fusion with higher top_k
+        # to ensure we have enough candidates for grouping
+        fusion_top_k = (top_k or 20) * 2  # Get more candidates
+        fused_results = self.fuse(ranking_lists, top_k=fusion_top_k, trace=trace)
+        
+        if not fused_results:
+            return []
+        
+        # Apply document grouping
+        import time
+        _t0 = time.monotonic()
+        
+        grouped = self.document_grouper.group_by_document(
+            fused_results,
+            top_k_per_doc=top_k_per_doc
+        )
+        
+        # Ensure diversity
+        diverse_grouped = self.document_grouper.ensure_diversity(
+            grouped,
+            min_docs=min_docs
+        )
+        
+        # Flatten back to list and re-sort by score
+        final_results = []
+        for doc_chunks in diverse_grouped.values():
+            final_results.extend(doc_chunks)
+        
+        final_results.sort(key=lambda r: r.score, reverse=True)
+        
+        # Apply final top_k
+        if top_k is not None and top_k > 0:
+            final_results = final_results[:top_k]
+        
+        _elapsed = (time.monotonic() - _t0) * 1000.0
+        if trace is not None:
+            trace.record_stage("document_grouping", {
+                "method": "document_grouper",
+                "top_k_per_doc": top_k_per_doc,
+                "min_docs": min_docs,
+                "document_count": len(diverse_grouped),
+                "result_count": len(final_results),
+            }, elapsed_ms=_elapsed)
+        
+        logger.debug(
+            f"Document grouping: {len(fused_results)} -> {len(final_results)} results, "
+            f"{len(diverse_grouped)} documents"
+        )
+        
+        return final_results
     
     def fuse_with_weights(
         self,

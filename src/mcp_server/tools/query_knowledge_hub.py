@@ -1,8 +1,9 @@
 """MCP Tool: query_knowledge_hub
 
-This tool provides knowledge retrieval capabilities through the MCP protocol.
-It combines HybridSearch (Dense + Sparse + RRF Fusion) with optional Reranking
-to find relevant documents and return formatted results with citations.
+This tool provides retrieval for the PathoMind medical knowledge hub through
+the MCP protocol. It combines HybridSearch (Dense + Sparse + RRF Fusion) with
+optional Reranking to find relevant documents and return formatted results
+with citations.
 
 Usage via MCP:
     Tool name: query_knowledge_hub
@@ -19,7 +20,17 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from mcp import types
+try:
+    from mcp import types
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    # Create placeholder types for when mcp is not available
+    class types:
+        class TextContent:
+            def __init__(self, type: str, text: str):
+                self.type = type
+                self.text = text
 
 from src.core.response.response_builder import ResponseBuilder, MCPToolResponse
 from src.core.settings import load_settings, resolve_path, Settings
@@ -35,10 +46,13 @@ logger = logging.getLogger(__name__)
 
 # Tool metadata
 TOOL_NAME = "query_knowledge_hub"
-TOOL_DESCRIPTION = """Search the knowledge base for relevant documents.
+TOOL_DESCRIPTION = """Search the PathoMind medical knowledge base for relevant documents.
 
-This tool uses hybrid search (semantic + keyword) to find the most relevant 
+This tool is intended for guideline / SOP / training / equipment-manual lookup.
+It uses hybrid search (semantic + keyword) to find the most relevant
 documents matching your query. Results include source citations for reference.
+
+This is a knowledge retrieval tool, not a diagnostic decision tool.
 
 Parameters:
 - query: Your search question or keywords
@@ -51,7 +65,7 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
     "properties": {
         "query": {
             "type": "string",
-            "description": "The search query or question to find relevant documents for.",
+            "description": "The medical knowledge query or question to find relevant documents for.",
         },
         "top_k": {
             "type": "integer",
@@ -62,7 +76,7 @@ TOOL_INPUT_SCHEMA: Dict[str, Any] = {
         },
         "collection": {
             "type": "string",
-            "description": "Optional collection name to limit the search scope.",
+            "description": "Optional collection name to limit the search scope, such as medical_demo_v01.",
         },
     },
     "required": ["query"],
@@ -167,6 +181,7 @@ class QueryKnowledgeHubTool:
         from src.core.query_engine.dense_retriever import create_dense_retriever
         from src.core.query_engine.sparse_retriever import create_sparse_retriever
         from src.core.query_engine.reranker import create_core_reranker
+        from src.core.query_engine.scope_provider import ScopeProvider
         from src.ingestion.storage.bm25_indexer import BM25Indexer
         from src.libs.embedding.embedding_factory import EmbeddingFactory
         from src.libs.vector_store.vector_store_factory import VectorStoreFactory
@@ -211,6 +226,10 @@ class QueryKnowledgeHubTool:
             dense_retriever=dense_retriever,
             sparse_retriever=sparse_retriever,
         )
+        
+        # Set up scope provider for knowledge base scope queries
+        scope_provider = ScopeProvider(vector_store=vector_store)
+        self._response_builder.set_scope_provider(scope_provider)
         
         self._current_collection = collection
         self._initialized = True
@@ -270,10 +289,13 @@ class QueryKnowledgeHubTool:
                 "cold_start": _init_elapsed > 500,  # >500ms ≈ cold
             }, elapsed_ms=_init_elapsed)
             
-            # Perform hybrid search (blocking: embedding API + DB queries)
-            results = await asyncio.to_thread(
-                self._perform_search, query, effective_top_k, trace,
+            # Perform hybrid search with query analysis (blocking: embedding API + DB queries)
+            search_result = await asyncio.to_thread(
+                self._perform_search_with_analysis, query, effective_top_k, trace,
             )
+            results = search_result["results"]
+            query_analysis = search_result.get("query_analysis")
+            grouped_chunks = search_result.get("grouped_chunks")
             
             # Apply reranking if enabled (may call LLM API)
             if self.config.enable_rerank and results:
@@ -281,12 +303,22 @@ class QueryKnowledgeHubTool:
                     self._apply_rerank, query, results, effective_top_k, trace,
                 )
             
-            # Build response
-            response = self._response_builder.build(
-                results=results,
-                query=query,
-                collection=effective_collection,
+            # Build response based on query analysis
+            response = await asyncio.to_thread(
+                self._build_response_with_routing,
+                query,
+                results,
+                effective_collection,
+                query_analysis,
+                grouped_chunks,
             )
+
+            if response.metadata.get("boundary_refusal"):
+                trace.metadata["boundary_refusal"] = True
+                trace.metadata["boundary_category"] = response.metadata.get(
+                    "boundary_category",
+                    "unknown",
+                )
             
             # Store final results in trace for dashboard display
             trace.metadata["final_results"] = [
@@ -299,10 +331,17 @@ class QueryKnowledgeHubTool:
                 }
                 for r in results
             ]
+            
+            # Add query analysis to trace
+            if query_analysis:
+                trace.metadata["query_complexity"] = query_analysis.complexity
+                trace.metadata["query_intent"] = query_analysis.intent
+                trace.metadata["requires_multi_doc"] = query_analysis.requires_multi_doc
 
             logger.info(
                 f"query_knowledge_hub completed: {len(results)} results, "
-                f"is_empty={response.is_empty}"
+                f"is_empty={response.is_empty}, "
+                f"complexity={query_analysis.complexity if query_analysis else 'unknown'}"
             )
             
             TraceCollector().collect(trace)
@@ -348,6 +387,135 @@ class QueryKnowledgeHubTool:
         except Exception as e:
             logger.warning(f"Hybrid search failed: {e}")
             return []
+    
+    def _perform_search_with_analysis(
+        self,
+        query: str,
+        top_k: int,
+        trace: Optional[Any] = None,
+    ) -> Dict[str, Any]:
+        """Perform hybrid search with query analysis and document grouping.
+        
+        This method integrates query analysis to determine the appropriate
+        retrieval and response strategy.
+        
+        Args:
+            query: Search query.
+            top_k: Maximum results.
+            trace: Optional TraceContext for observability.
+            
+        Returns:
+            Dictionary containing:
+                - results: List of RetrievalResult
+                - query_analysis: QueryAnalysis object (if available)
+                - grouped_chunks: Dict mapping document names to chunks (for multi-doc)
+        """
+        if self._hybrid_search is None:
+            raise RuntimeError("HybridSearch not initialized")
+        
+        # Use a larger initial retrieval for reranking and multi-document scenarios
+        initial_top_k = top_k * 2 if self.config.enable_rerank else top_k
+        
+        try:
+            # Perform search with detailed results to get query analysis
+            search_result = self._hybrid_search.search(
+                query=query,
+                top_k=initial_top_k,
+                filters=None,
+                trace=trace,
+                return_details=True,
+            )
+            
+            results = search_result.results if hasattr(search_result, 'results') else search_result
+            query_analysis = getattr(search_result, 'query_analysis', None)
+            
+            # Group chunks by document if multi-document query
+            grouped_chunks = None
+            if query_analysis and query_analysis.requires_multi_doc:
+                from src.core.query_engine.document_grouper import DocumentGrouper
+                grouper = DocumentGrouper()
+                grouped_chunks = grouper.group_by_document(
+                    results,
+                    top_k_per_doc=3
+                )
+                # Ensure diversity for multi-document scenarios
+                grouped_chunks = grouper.ensure_diversity(
+                    grouped_chunks,
+                    min_docs=2
+                )
+            
+            return {
+                "results": results,
+                "query_analysis": query_analysis,
+                "grouped_chunks": grouped_chunks,
+            }
+        except Exception as e:
+            logger.warning(f"Hybrid search with analysis failed: {e}")
+            return {
+                "results": [],
+                "query_analysis": None,
+                "grouped_chunks": None,
+            }
+    
+    def _build_response_with_routing(
+        self,
+        query: str,
+        results: List[RetrievalResult],
+        collection: str,
+        query_analysis: Optional[Any] = None,
+        grouped_chunks: Optional[Dict[str, List[RetrievalResult]]] = None,
+    ) -> MCPToolResponse:
+        """Build response with routing based on query analysis.
+        
+        Routes to appropriate response builder based on:
+        - Query intent (scope_inquiry -> scope response)
+        - Query complexity (comparison/aggregation -> multi-document response)
+        - Default (standard response)
+        
+        Args:
+            query: User query
+            results: Retrieved results
+            collection: Collection name
+            query_analysis: Query analysis result
+            grouped_chunks: Grouped chunks for multi-document responses
+            
+        Returns:
+            MCPToolResponse with appropriate formatting
+        """
+        # Check for scope inquiry
+        if query_analysis and query_analysis.intent == "scope_inquiry":
+            return self._response_builder.build_scope_response(
+                query=query,
+                collection=collection,
+            )
+        
+        # Check for multi-document scenarios
+        if (query_analysis and 
+            query_analysis.requires_multi_doc and 
+            grouped_chunks and 
+            len(grouped_chunks) >= 2):
+            
+            # Determine response type based on complexity
+            if query_analysis.complexity == "comparison":
+                response_type = "comparison"
+            elif query_analysis.complexity == "aggregation":
+                response_type = "aggregation"
+            else:
+                response_type = "standard"
+            
+            return self._response_builder.build_multi_document_response(
+                query=query,
+                grouped_chunks=grouped_chunks,
+                response_type=response_type,
+                collection=collection,
+            )
+        
+        # Default: standard response
+        return self._response_builder.build(
+            results=results,
+            query=query,
+            collection=collection,
+        )
     
     def _apply_rerank(
         self,

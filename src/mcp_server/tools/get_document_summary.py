@@ -18,7 +18,17 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
-from mcp import types
+try:
+    from mcp import types
+    MCP_AVAILABLE = True
+except ImportError:
+    MCP_AVAILABLE = False
+    # Create placeholder types for when mcp is not available
+    class types:
+        class TextContent:
+            def __init__(self, type: str, text: str):
+                self.type = type
+                self.text = text
 
 if TYPE_CHECKING:
     from src.mcp_server.protocol_handler import ProtocolHandler

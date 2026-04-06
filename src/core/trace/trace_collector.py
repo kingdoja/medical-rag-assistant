@@ -6,6 +6,8 @@ decoupled from the logging module so that trace persistence remains
 predictable and testable.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 from pathlib import Path

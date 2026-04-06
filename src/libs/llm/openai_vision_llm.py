@@ -14,7 +14,7 @@ import base64
 import io
 import os
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any, Optional, Tuple
 
 from src.libs.llm.base_llm import ChatResponse, Message
 from src.libs.llm.base_vision_llm import BaseVisionLLM, ImageInput
@@ -231,7 +231,7 @@ class OpenAIVisionLLM(BaseVisionLLM):
     def preprocess_image(
         self,
         image: ImageInput,
-        max_size: Optional[tuple[int, int]] = None,
+        max_size: Optional[Tuple[int, int]] = None,
     ) -> ImageInput:
         """Preprocess image before sending to Vision API.
         

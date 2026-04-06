@@ -1,6 +1,7 @@
 """Chunk refinement transform: rule-based cleaning + optional LLM enhancement."""
 
 import re
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -17,6 +18,7 @@ logger = get_logger(__name__)
 
 # Default max parallel workers for LLM calls
 DEFAULT_MAX_WORKERS = 5
+DEFAULT_MAX_LLM_CHUNKS = 8
 
 
 class ChunkRefiner(BaseTransform):
@@ -54,13 +56,36 @@ class ChunkRefiner(BaseTransform):
         self._llm = llm
         self._prompt_template: Optional[str] = None
         self._prompt_path = prompt_path or str(resolve_path("config/prompts/chunk_refinement.txt"))
-        
-        # Determine if LLM should be used
-        self.use_llm = getattr(
-            getattr(settings, 'ingestion', None), 
-            'chunk_refiner', 
+        self._llm_failure_lock = threading.Lock()
+        self._llm_failure_count = 0
+        self._llm_disabled_logged = False
+
+        # Determine runtime config from settings.ingestion.chunk_refiner
+        chunk_refiner_config = getattr(
+            getattr(settings, 'ingestion', None),
+            'chunk_refiner',
             {}
-        ).get('use_llm', False) if hasattr(settings, 'ingestion') else False
+        ) if hasattr(settings, 'ingestion') else {}
+        if not isinstance(chunk_refiner_config, dict):
+            chunk_refiner_config = {}
+
+        self.use_llm = bool(chunk_refiner_config.get('use_llm', False))
+        self.max_workers = int(chunk_refiner_config.get('max_workers', DEFAULT_MAX_WORKERS))
+        if self.max_workers <= 0:
+            self.max_workers = DEFAULT_MAX_WORKERS
+
+        max_llm_chunks = chunk_refiner_config.get('max_llm_chunks', DEFAULT_MAX_LLM_CHUNKS)
+        if isinstance(max_llm_chunks, int) and max_llm_chunks >= 0:
+            self.max_llm_chunks: Optional[int] = max_llm_chunks
+        else:
+            self.max_llm_chunks = DEFAULT_MAX_LLM_CHUNKS
+
+        logger.info(
+            "ChunkRefiner config: use_llm=%s, max_workers=%s, max_llm_chunks=%s",
+            self.use_llm,
+            self.max_workers,
+            self.max_llm_chunks,
+        )
         
     @property
     def llm(self) -> Optional[BaseLLM]:
@@ -90,12 +115,66 @@ class ChunkRefiner(BaseTransform):
         """
         if not chunks:
             return []
-        
-        # Process chunks in parallel if LLM is enabled
+
+        # Process chunks in parallel if LLM is enabled; optionally limit LLM scope.
         if self.use_llm and self.llm:
-            return self._transform_parallel(chunks, trace)
-        else:
-            return self._transform_sequential(chunks, trace)
+            if self.max_llm_chunks is None or self.max_llm_chunks >= len(chunks):
+                return self._transform_parallel(chunks, trace)
+
+            llm_count = self.max_llm_chunks
+            if llm_count <= 0:
+                logger.info("ChunkRefiner LLM scope limit is 0. Using rule-based refinement only.")
+                return self._transform_sequential(chunks, trace)
+
+            logger.info(
+                f"ChunkRefiner LLM scope limited to first {llm_count}/{len(chunks)} chunks; "
+                "remaining chunks use rule-based refinement."
+            )
+            llm_head = chunks[:llm_count]
+            rule_tail = chunks[llm_count:]
+
+            refined_head = self._transform_parallel(llm_head, None)
+            refined_tail = self._transform_rule_only(rule_tail)
+            merged = refined_head + refined_tail
+
+            if trace:
+                llm_enhanced_count = sum(1 for c in merged if c.metadata.get("refined_by") == "llm")
+                rule_count = sum(1 for c in merged if c.metadata.get("refined_by") == "rule")
+                trace.record_stage("chunk_refiner", {
+                    "total_chunks": len(chunks),
+                    "success_count": len(merged),
+                    "llm_enhanced_count": llm_enhanced_count,
+                    "fallback_count": rule_count,
+                    "use_llm": self.use_llm,
+                    "parallel": True,
+                    "max_workers": min(self.max_workers, max(1, len(llm_head))),
+                    "max_llm_chunks": self.max_llm_chunks,
+                })
+            return merged
+
+        return self._transform_sequential(chunks, trace)
+
+    def _transform_rule_only(self, chunks: List[Chunk]) -> List[Chunk]:
+        """Refine chunks using only rule-based logic (no LLM calls)."""
+        refined_chunks: List[Chunk] = []
+        for chunk in chunks:
+            try:
+                refined_text = self._rule_based_refine(chunk.text)
+                refined_chunks.append(
+                    Chunk(
+                        id=chunk.id,
+                        text=refined_text,
+                        metadata={
+                            **(chunk.metadata or {}),
+                            'refined_by': 'rule',
+                        },
+                        source_ref=chunk.source_ref,
+                    )
+                )
+            except Exception as e:
+                logger.error(f"Failed to refine chunk {chunk.id}: {e}")
+                refined_chunks.append(chunk)
+        return refined_chunks
     
     def _refine_single_chunk(
         self, 
@@ -150,27 +229,29 @@ class ChunkRefiner(BaseTransform):
         trace: Optional[TraceContext] = None
     ) -> List[Chunk]:
         """Process chunks in parallel using ThreadPoolExecutor."""
-        max_workers = min(DEFAULT_MAX_WORKERS, len(chunks))
+        max_workers = min(self.max_workers, len(chunks))
         refined_chunks = [None] * len(chunks)
         llm_enhanced_count = 0
         fallback_count = 0
         
         logger.debug(f"Processing {len(chunks)} chunks in parallel (max_workers={max_workers})")
         
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        future_to_idx = {}
+        try:
             # Submit all tasks
             future_to_idx = {
                 executor.submit(self._refine_single_chunk, chunk, trace): idx
                 for idx, chunk in enumerate(chunks)
             }
-            
+
             # Collect results
             for future in as_completed(future_to_idx):
                 idx = future_to_idx[future]
                 try:
                     refined_chunk, refined_by, error = future.result()
                     refined_chunks[idx] = refined_chunk
-                    
+
                     if refined_by == "llm":
                         llm_enhanced_count += 1
                     elif refined_by == "rule" and error is None:
@@ -178,6 +259,18 @@ class ChunkRefiner(BaseTransform):
                 except Exception as e:
                     logger.error(f"Unexpected error in parallel refinement: {e}")
                     refined_chunks[idx] = chunks[idx]
+        except KeyboardInterrupt:
+            # Make Ctrl+C responsive even if worker threads are blocked on network I/O.
+            for f in future_to_idx.keys():
+                f.cancel()
+            executor.shutdown(wait=False, cancel_futures=True)
+            raise
+        finally:
+            # Normal completion path: wait for threads to finish.
+            try:
+                executor.shutdown(wait=True)
+            except Exception:
+                pass
         
         success_count = sum(1 for c in refined_chunks if c is not None)
         
@@ -392,7 +485,19 @@ class ChunkRefiner(BaseTransform):
                 return None
                 
         except Exception as e:
-            logger.warning(f"LLM refinement failed: {e}")
+            # Avoid spamming logs and wasting time when connectivity is broken.
+            with self._llm_failure_lock:
+                self._llm_failure_count += 1
+                if self._llm_failure_count >= 3 and self.use_llm:
+                    self.use_llm = False
+                    if not self._llm_disabled_logged:
+                        logger.warning(
+                            f"LLM refinement failed ({self._llm_failure_count} times). "
+                            f"Disabling LLM refinement for the remainder of this run. Last error: {e}"
+                        )
+                        self._llm_disabled_logged = True
+                elif not self._llm_disabled_logged:
+                    logger.warning(f"LLM refinement failed: {e}")
             return None
     
     def _load_prompt(self) -> Optional[str]:

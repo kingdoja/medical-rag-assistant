@@ -7,11 +7,10 @@
 # =============================================================================
 llm:
   provider: "openai"  # Options: openai, azure, ollama, deepseek
-  model: "gpt-4o"
-  deployment_name: "gpt-4o"
-  azure_endpoint: "https://YOUR_ENDPOINT.openai.azure.com/"
-  api_version: "2024-02-15-preview"
-  api_key: "YOUR_API_KEY_HERE"
+  # DashScope OpenAI-compatible mode (Qwen text model for refine/enrich)
+  model: "qwen-plus"
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: null  # Read from OPENAI_API_KEY in .env/environment
   temperature: 0.0
   max_tokens: 4096
 
@@ -20,28 +19,25 @@ llm:
 # =============================================================================
 embedding:
   provider: "openai"  # Options: openai, azure, ollama
-  model: "text-embedding-ada-002"
-  dimensions: 1536  # text-embedding-ada-002 固定维度 (不传递给API, 仅用于验证)
-  # Azure-compatible settings (azure_endpoint triggers Azure compat mode):
-  azure_endpoint: "https://YOUR_ENDPOINT.openai.azure.com/"
-  deployment_name: "text-embedding-ada-002"
-  api_version: "2024-02-15-preview"
-  api_key: "YOUR_API_KEY_HERE"
-  # OpenAI-specific settings (if provider is openai):
-  # api_key: "YOUR_API_KEY_HERE"
+  # DashScope OpenAI-compatible mode (Qwen embeddings)
+  # Important: leave azure_endpoint/deployment_name unset when using base_url.
+  model: "text-embedding-v3"
+  dimensions: 1024
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: null  # Read from OPENAI_API_KEY in .env/environment
 
 # =============================================================================
 # Vision LLM Configuration (for Image Captioning)
 # =============================================================================
 vision_llm:
-  enabled: true  # Set to true to enable vision capabilities
+  enabled: false  # Demo default: disable vision to avoid external API calls
   provider: "openai"  # Options: openai, azure, ollama
   model: "gpt-4o"  # Options: gpt-4o, gpt-4-vision-preview (OpenAI), llava (Ollama)
   # Azure-compatible settings (azure_endpoint triggers Azure compat mode):
   azure_endpoint: "https://YOUR_ENDPOINT.openai.azure.com/"
   deployment_name: "gpt-4o"
   api_version: "2024-02-15-preview"
-  api_key: "YOUR_API_KEY_HERE"
+  api_key: null  # Read from OPENAI_API_KEY in .env/environment
   # Ollama-specific settings (if provider is ollama):
   # base_url: "http://localhost:11434"
   max_image_size: 2048  # Max dimension (width/height) for image compression
@@ -99,14 +95,18 @@ ingestion:
   chunk_size: 1000
   chunk_overlap: 200
   splitter: "recursive"  # Options: recursive, semantic, fixed_length
-  batch_size: 100
+  batch_size: 100  # DashScope embeddings are auto-split to 10 items/request by OpenAIEmbedding
   
   # Chunk Refiner Configuration (C5)
   chunk_refiner:
-    use_llm: true  # Set to true to enable LLM-based refinement (requires LLM config)
+    use_llm: true  # Enable LLM-based chunk refinement via DashScope-compatible LLM
+    max_workers: 2  # Limit concurrent LLM calls for stability
+    max_llm_chunks: 8  # Per document: only first N chunks use LLM, rest fallback to rules
     # When use_llm is false or LLM call fails, falls back to rule-based refinement
   
   # Metadata Enricher Configuration (C6)
   metadata_enricher:
-    use_llm: true  # Set to true to enable LLM-based enrichment (requires LLM config)
+    use_llm: true  # Enable LLM-based metadata enrichment via DashScope-compatible LLM
+    max_workers: 2  # Limit concurrent LLM calls for stability
+    max_llm_chunks: 8  # Per document: only first N chunks use LLM, rest fallback to rules
     # When use_llm is false or LLM call fails, falls back to rule-based enrichment

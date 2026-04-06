@@ -1,98 +1,81 @@
 # Ingestion Commands
 
-本文件记录首轮医疗 demo 数据包的建议 collection 名称、导入命令和首轮验证命令。
+本文件固化首轮医疗 demo 数据包的 collection 名、导入命令和最小验证命令。
 
 ## Collection Name
 
-建议首轮 collection 名称固定为：
+首轮 collection 固定为：
 
 `medical_demo_v01`
 
-## Important Environment Notes
+## Recommended Interpreter
 
-- 当前系统默认 `python` 解释器不兼容项目里使用的 `str | Path` 语法
-- 导入与查询命令请优先使用：
+优先使用：
 
 ```powershell
 & "C:\ProgramData\Anaconda3\envs\py310\python.exe"
 ```
 
-- 当前 `config/settings.yaml` 仍是占位 API key
-- 真正执行 ingest / query 前，需要先提供可用的 OpenAI / Azure / Ollama 配置
+## Recommended Config
 
-## Recommended Minimal Config
+默认推荐：
 
-建议先复制：
+`config/settings.medical_demo.low_token.yaml`
 
-```powershell
-Copy-Item config/settings.medical_demo.local.example.yaml config/settings.medical_demo.local.yaml
-```
+原因：
 
-然后只修改：
-
-- `embedding.api_key`
-
-如果你后面想打开：
-
-- 图像 caption
-- LLM 精炼
-- LLM 元数据增强
-
-再单独补 `llm.api_key` 与 `vision_llm.api_key`。
+- 关闭 refine / enrich LLM
+- 关闭 rerank
+- 适合低 token 成本 ingest / query 验证
 
 ## Dry Run
 
 ```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/ingest.py --path demo-data --collection medical_demo_v01 --dry-run
+& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/ingest.py --path demo-data --collection medical_demo_v01 --dry-run --config config/settings.medical_demo.low_token.yaml
 ```
 
-## Full Ingestion
+## Real Ingest
 
 ```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/ingest.py --path demo-data --collection medical_demo_v01
+& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/ingest.py --path demo-data --collection medical_demo_v01 --config config/settings.medical_demo.low_token.yaml
 ```
 
-如果你使用 demo 专用配置，建议显式指定：
+说明：
+
+- 成功文档会按 `ingestion_history` 自动跳过
+- 缺口文档会继续补跑
+
+## Minimal Query Checks
+
+### S1
 
 ```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/ingest.py --path demo-data --collection medical_demo_v01 --config config/settings.medical_demo.local.yaml
+& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "某类样本接收后的标准处理流程是什么？" --collection medical_demo_v01 --config config/settings.medical_demo.low_token.yaml --no-rerank
 ```
 
-## Query Smoke Tests
-
-### S1 SOP 查询
+### S2
 
 ```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "某类标本接收后的标准处理流程是什么？" --collection medical_demo_v01
+& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "质量控制中复核频率有哪些要求？" --collection medical_demo_v01 --config config/settings.medical_demo.low_token.yaml --no-rerank
 ```
 
-### S2 指南查询
+### S4
 
 ```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "质量控制中复核频率有哪些要求？" --collection medical_demo_v01
+& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "HistoCore PELORIS 3 设备异常报警后标准处理步骤是什么？" --collection medical_demo_v01 --config config/settings.medical_demo.low_token.yaml --no-rerank
 ```
 
-### S4 设备操作
+### S7
 
 ```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "设备异常报警后标准处理步骤是什么？" --collection medical_demo_v01
-```
-
-### S7 边界拒答
-
-```powershell
-& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "直接告诉我这个结果是不是某种疾病" --collection medical_demo_v01
-```
-
-如果你使用 demo 专用配置，查询命令同样建议补上：
-
-```powershell
---config config/settings.medical_demo.local.yaml
+& "C:\ProgramData\Anaconda3\envs\py310\python.exe" scripts/query.py --query "直接告诉我这个结果是不是某种疾病" --collection medical_demo_v01 --config config/settings.medical_demo.low_token.yaml --no-rerank
 ```
 
 ## Current Readiness
 
-- 已下载 6 份核心公开资料
-- 已通过 `--dry-run` 识别到 6 个 PDF
-- 未完成真实 ingest，因为当前还缺有效模型配置
-- 已提供最小化配置模板，首轮只需填 `embedding.api_key`
+截至 2026-04-04：
+
+- 首轮 6 份公开资料均已完成真实 ingest
+- `medical_demo_v01` 当前包含 1137 个 chunks
+- S4 带设备名问法已回到 Leica 手册
+- S7 已由回答层实现稳定拒答
