@@ -296,11 +296,11 @@ vector_store:
 
 ## 👤 作者
 
-**林淑能**
+**King Doja**
 - 医疗AI应用开发者
 - 专注于RAG系统和AI Agent工程化
-- Email: [your-email@example.com]
-- GitHub: [@yourusername]
+- Email: [1477793103@qq.com]
+- GitHub: [@kingdoja]
 
 ## 🙏 致谢
 
