@@ -183,5 +183,12 @@ data/db/bm25/
 .agents/
 .superpowers/
 
+# GitHub skills (internal development tools, not for public repo)
+.github/skills/
+
+# Internal project docs (not for public repo)
+docs/specs/medical-assistant/
+GITHUB_PREPARATION.md
+
 # Test data
 test_data/
