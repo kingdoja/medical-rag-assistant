@@ -1,0 +1,20 @@
+{
+  "document_type": "algorithm_doc",
+  "algorithm_type": "perception",
+  "algorithm_category": "object_detection",
+  "algorithm_name": "YOLO",
+  "version": "v3.0",
+  "description": "YOLO 目标检测算法设计文档",
+  "key_features": {
+    "input": "RGB 图像",
+    "output": "目标边界框和类别",
+    "backbone": "Darknet-53",
+    "accuracy": "mAP 57.9%",
+    "speed": "30 FPS"
+  },
+  "use_cases": [
+    "车辆检测",
+    "行人检测",
+    "交通标志识别"
+  ]
+}

@@ -53,6 +53,51 @@ SCOPE_KEYWORDS: Set[str] = {
     "包括什么", "涵盖", "收录"
 }
 
+# Autonomous driving term patterns
+SENSOR_TERMS: Set[str] = {
+    "摄像头", "camera", "激光雷达", "lidar", "毫米波雷达", "radar",
+    "超声波", "ultrasonic", "分辨率", "resolution", "帧率", "frame rate",
+    "视场角", "fov", "探测距离", "detection range", "标定", "calibration"
+}
+
+ALGORITHM_TERMS: Set[str] = {
+    "感知", "perception", "规划", "planning", "控制", "control",
+    "slam", "目标检测", "object detection", "车道线", "lane",
+    "障碍物", "obstacle", "路径规划", "path planning",
+    "轨迹", "trajectory", "pid", "mpc"
+}
+
+SYSTEM_TERMS: Set[str] = {
+    "adas", "odd", "v2x", "自动驾驶分级", "功能安全",
+    "autonomous driving", "ad"
+}
+
+REGULATION_TERMS: Set[str] = {
+    "gb/t", "iso 26262", "标准", "standard", "法规", "regulation",
+    "asil", "功能安全", "functional safety", "测试规范", "test specification"
+}
+
+# Synonym mappings for query expansion
+SYNONYM_MAP: dict = {
+    "激光雷达": ["lidar"],
+    "lidar": ["激光雷达"],
+    "摄像头": ["camera", "相机"],
+    "camera": ["摄像头"],
+    "相机": ["摄像头", "camera"],
+    "毫米波雷达": ["radar", "雷达"],
+    "radar": ["毫米波雷达"],
+    "雷达": ["毫米波雷达", "radar"],
+    "自动驾驶": ["autonomous driving", "ad"],
+    "autonomous driving": ["自动驾驶"],
+    "ad": ["自动驾驶"],
+    "adas": ["高级驾驶辅助系统", "advanced driver assistance"],
+    "高级驾驶辅助系统": ["adas"],
+    "odd": ["设计运行条件", "operational design domain"],
+    "设计运行条件": ["odd"],
+    "v2x": ["车联网", "vehicle to everything"],
+    "车联网": ["v2x"],
+}
+
 
 @dataclass
 class QueryAnalysis:
@@ -71,6 +116,8 @@ class QueryAnalysis:
         sub_queries: List of sub-questions (for multi_part queries)
         requires_multi_doc: Whether query requires multiple documents
         detected_keywords: Keywords that triggered the classification
+        detected_terms: Detected autonomous driving technical terms
+        term_types: Mapping of detected terms to their types
     """
     
     complexity: Literal["simple", "multi_part", "comparison", "aggregation"]
@@ -78,6 +125,8 @@ class QueryAnalysis:
     sub_queries: List[str] = field(default_factory=list)
     requires_multi_doc: bool = False
     detected_keywords: List[str] = field(default_factory=list)
+    detected_terms: List[str] = field(default_factory=list)
+    term_types: dict = field(default_factory=dict)
 
 
 class QueryAnalyzer:
@@ -100,6 +149,11 @@ class QueryAnalyzer:
         self.multi_part_indicators = MULTI_PART_INDICATORS
         self.boundary_keywords = BOUNDARY_KEYWORDS
         self.scope_keywords = SCOPE_KEYWORDS
+        self.sensor_terms = SENSOR_TERMS
+        self.algorithm_terms = ALGORITHM_TERMS
+        self.system_terms = SYSTEM_TERMS
+        self.regulation_terms = REGULATION_TERMS
+        self.synonym_map = SYNONYM_MAP
     
     def analyze(self, query: str) -> QueryAnalysis:
         """Analyze query to determine complexity and intent.
@@ -116,11 +170,16 @@ class QueryAnalyzer:
                 intent="retrieval",
                 sub_queries=[],
                 requires_multi_doc=False,
-                detected_keywords=[]
+                detected_keywords=[],
+                detected_terms=[],
+                term_types={}
             )
         
         query_lower = query.lower()
         detected_keywords: List[str] = []
+        
+        # Detect autonomous driving terms
+        detected_terms, term_types = self._detect_ad_terms(query, query_lower)
         
         # Detect intent first (higher priority)
         intent = self._detect_intent(query_lower, detected_keywords)
@@ -139,7 +198,9 @@ class QueryAnalyzer:
             intent=intent,
             sub_queries=sub_queries,
             requires_multi_doc=requires_multi_doc,
-            detected_keywords=detected_keywords
+            detected_keywords=detected_keywords,
+            detected_terms=detected_terms,
+            term_types=term_types
         )
     
     def _detect_intent(self, query_lower: str, detected_keywords: List[str]) -> Literal["retrieval", "boundary", "scope_inquiry"]:
@@ -274,6 +335,59 @@ class QueryAnalyzer:
             return [query]
         
         return sub_queries
+    
+    def _detect_ad_terms(self, query: str, query_lower: str) -> tuple:
+        """Detect autonomous driving technical terms in the query.
+        
+        Args:
+            query: Original query string
+            query_lower: Lowercase query string
+            
+        Returns:
+            Tuple of (detected_terms, term_types) where:
+            - detected_terms: List of detected terms
+            - term_types: Dict mapping terms to their types
+        """
+        detected_terms: List[str] = []
+        term_types: dict = {}
+        
+        # Check sensor terms
+        for term in self.sensor_terms:
+            if term in query_lower:
+                detected_terms.append(term)
+                term_types[term] = "sensor"
+        
+        # Check algorithm terms
+        for term in self.algorithm_terms:
+            if term in query_lower:
+                detected_terms.append(term)
+                term_types[term] = "algorithm"
+        
+        # Check system terms
+        for term in self.system_terms:
+            if term in query_lower:
+                detected_terms.append(term)
+                term_types[term] = "system"
+        
+        # Check regulation terms
+        for term in self.regulation_terms:
+            if term in query_lower:
+                detected_terms.append(term)
+                term_types[term] = "regulation"
+        
+        return detected_terms, term_types
+    
+    def get_synonyms(self, term: str) -> List[str]:
+        """Get synonyms for a given term.
+        
+        Args:
+            term: Term to find synonyms for
+            
+        Returns:
+            List of synonyms (empty if no synonyms found)
+        """
+        term_lower = term.lower()
+        return self.synonym_map.get(term_lower, [])
 
 
 def create_query_analyzer() -> QueryAnalyzer:

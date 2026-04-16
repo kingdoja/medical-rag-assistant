@@ -1,0 +1,17 @@
+{
+  "document_type": "sensor_doc",
+  "sensor_type": "lidar",
+  "content_type": "specification",
+  "manufacturer": "Velodyne",
+  "model": "VLS-128",
+  "version": "v1.0",
+  "description": "Velodyne VLS-128 激光雷达规格书",
+  "key_parameters": {
+    "detection_range": "200m",
+    "resolution": "0.1°",
+    "fov_vertical": "40°",
+    "fov_horizontal": "360°",
+    "channels": 128,
+    "frame_rate": "10-20 Hz"
+  }
+}

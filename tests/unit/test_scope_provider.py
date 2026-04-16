@@ -290,3 +290,133 @@ class TestScopeProvider:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestScopeProviderAD:
+    """Test suite for ScopeProvider autonomous driving domain support."""
+
+    def _make_provider(self, docs=None, doc_count=0, chunk_count=0):
+        """Helper to create a ScopeProvider with mocked document manager."""
+        from unittest.mock import Mock
+        mock_doc_mgr = Mock()
+        mock_doc_mgr.get_collection_stats.return_value = MockCollectionStats(
+            collection="ad_knowledge_v01",
+            document_count=doc_count,
+            chunk_count=chunk_count,
+        )
+        mock_doc_mgr.list_documents.return_value = docs or []
+        return ScopeProvider(document_manager=mock_doc_mgr)
+
+    def test_detect_ad_sensor_doc(self):
+        """Test detection of AD sensor document types."""
+        provider = self._make_provider()
+        assert provider._detect_document_type("lidar_spec_vls128.pdf") == "sensor_doc"
+        assert provider._detect_document_type("camera_spec_ov2311.pdf") == "sensor_doc"
+        assert provider._detect_document_type("radar_spec_ars408.pdf") == "sensor_doc"
+        assert provider._detect_document_type("calibration_doc_lidar.pdf") == "sensor_doc"
+
+    def test_detect_ad_algorithm_doc(self):
+        """Test detection of AD algorithm document types."""
+        provider = self._make_provider()
+        assert provider._detect_document_type("perception_design_yolo.pdf") == "algorithm_doc"
+        assert provider._detect_document_type("planning_design_rrt.pdf") == "algorithm_doc"
+        assert provider._detect_document_type("control_design_pid.pdf") == "algorithm_doc"
+
+    def test_detect_ad_regulation_doc(self):
+        """Test detection of AD regulation document types."""
+        provider = self._make_provider()
+        assert provider._detect_document_type("gb_t_40429_2021.pdf") == "regulation_doc"
+        assert provider._detect_document_type("iso_26262_part3.pdf") == "regulation_doc"
+        assert provider._detect_document_type("test_specification_acc.pdf") == "regulation_doc"
+
+    def test_detect_ad_test_doc(self):
+        """Test detection of AD test document types."""
+        provider = self._make_provider()
+        assert provider._detect_document_type("test_scenario_following.pdf") == "test_doc"
+        assert provider._detect_document_type("functional_test_acc.pdf") == "test_doc"
+        assert provider._detect_document_type("safety_test_braking.pdf") == "test_doc"
+        assert provider._detect_document_type("test_case_lane_change.pdf") == "test_doc"
+
+    def test_get_document_statistics(self):
+        """Test get_document_statistics returns per-type counts."""
+        docs = [
+            MockDocumentInfo(source_path="sensor_spec/lidar_spec_vls128.pdf", source_hash="h1"),
+            MockDocumentInfo(source_path="sensor_spec/camera_spec_ov2311.pdf", source_hash="h2"),
+            MockDocumentInfo(source_path="algorithms/perception_design_yolo.pdf", source_hash="h3"),
+            MockDocumentInfo(source_path="regulations/gb_t_40429_2021.pdf", source_hash="h4"),
+            MockDocumentInfo(source_path="tests/test_scenario_following.pdf", source_hash="h5"),
+            MockDocumentInfo(source_path="tests/functional_test_acc.pdf", source_hash="h6"),
+        ]
+        provider = self._make_provider(docs=docs, doc_count=6)
+        stats = provider.get_document_statistics("ad_knowledge_v01")
+
+        assert stats.get("sensor_doc", 0) == 2
+        assert stats.get("algorithm_doc", 0) == 1
+        assert stats.get("regulation_doc", 0) == 1
+        assert stats.get("test_doc", 0) == 2
+
+    def test_get_document_statistics_empty(self):
+        """Test get_document_statistics with empty collection."""
+        provider = self._make_provider()
+        stats = provider.get_document_statistics("ad_knowledge_v01")
+        assert stats == {}
+
+    def test_format_ad_scope_response_basic(self):
+        """Test AD scope response formatting."""
+        provider = self._make_provider()
+        scope = ScopeInfo(
+            collection="ad_knowledge_v01",
+            document_types={"sensor_doc", "algorithm_doc", "regulation_doc", "test_doc"},
+            document_count=260,
+            chunk_count=1200,
+            last_updated="2024-01-15T10:30:00",
+            coverage_areas=["传感器技术", "感知算法", "法规标准", "测试场景"],
+        )
+        stats = {"sensor_doc": 50, "algorithm_doc": 80, "regulation_doc": 30, "test_doc": 100}
+
+        response = provider.format_ad_scope_response(scope, statistics=stats)
+
+        assert "ad_knowledge_v01" in response
+        assert "传感器文档" in response
+        assert "算法文档" in response
+        assert "法规文档" in response
+        assert "测试文档" in response
+        assert "260" in response
+        assert "1200" in response
+
+    def test_format_ad_scope_response_with_query(self):
+        """Test AD scope response includes query context."""
+        provider = self._make_provider()
+        scope = ScopeInfo(
+            collection="ad_knowledge_v01",
+            document_types={"sensor_doc"},
+            document_count=50,
+            chunk_count=500,
+            last_updated="2024-01-15T10:30:00",
+        )
+
+        response = provider.format_ad_scope_response(scope, query="系统包含哪些文档？")
+        assert "系统包含哪些文档？" in response
+
+    def test_format_ad_scope_response_with_counts(self):
+        """Test AD scope response shows per-type document counts."""
+        provider = self._make_provider()
+        scope = ScopeInfo(
+            collection="ad_knowledge_v01",
+            document_types={"sensor_doc", "algorithm_doc"},
+            document_count=130,
+            chunk_count=800,
+            last_updated="2024-01-15T10:30:00",
+        )
+        stats = {"sensor_doc": 50, "algorithm_doc": 80}
+
+        response = provider.format_ad_scope_response(scope, statistics=stats)
+        assert "50 份" in response
+        assert "80 份" in response
+
+    def test_medical_types_still_detected(self):
+        """Test that medical domain types are still detected (backward compat)."""
+        provider = self._make_provider()
+        assert provider._detect_document_type("guideline_lab_quality.pdf") == "guideline"
+        assert provider._detect_document_type("sop_sample_management.pdf") == "sop"
+        assert provider._detect_document_type("manual_histocore_user.pdf") == "manual"

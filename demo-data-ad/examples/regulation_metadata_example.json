@@ -1,0 +1,25 @@
+{
+  "document_type": "regulation_doc",
+  "regulation_type": "national_standard",
+  "standard_number": "GB/T 40429-2021",
+  "standard_name": "汽车驾驶自动化分级",
+  "publish_date": "2021-03-09",
+  "effective_date": "2021-10-01",
+  "version": "v1.0",
+  "description": "中国国家标准 - 汽车驾驶自动化分级标准",
+  "key_content": {
+    "levels": [
+      "L0 - 应急辅助",
+      "L1 - 部分驾驶辅助",
+      "L2 - 组合驾驶辅助",
+      "L3 - 有条件自动驾驶",
+      "L4 - 高度自动驾驶",
+      "L5 - 完全自动驾驶"
+    ],
+    "scope": "适用于在道路上行驶的汽车",
+    "references": [
+      "SAE J3016",
+      "ISO 26262"
+    ]
+  }
+}

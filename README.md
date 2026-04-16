@@ -1,38 +1,33 @@
-# 🏥 PathoMind - 医疗知识与质控助手
+# 🔍 Modular RAG MCP Server
 
-> 面向病理科/检验科的智能知识检索与质控辅助系统
+> 面向垂直领域的模块化知识检索系统，支持医疗、自动驾驶等多领域知识库
 
 [![Python](https://img.shields.io/badge/Python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
 ## 📋 项目简介
 
-PathoMind 是一个基于 RAG（检索增强生成）技术的医疗知识助手，专为病理科和检验科设计。它不是自动诊断系统，而是帮助医护人员快速检索指南、SOP、设备手册等内部知识，提供带引用的可信回答。
+本项目是一个基于 RAG（检索增强生成）技术的模块化知识检索系统，可快速适配不同垂直领域的知识库。系统不做自动诊断或决策，而是帮助专业人员快速检索内部文档，提供带引用的可信回答。
+
+目前已支持的领域：
+- 🏥 **医疗知识助手**：病理科/检验科指南、SOP、设备手册检索
+- 🚗 **自动驾驶知识检索**：传感器文档、算法文档、法规标准、测试场景检索
 
 ### 核心特性
 
-- 🔍 **混合检索**：BM25 + 向量检索 + RRF融合 + 重排序，适配医疗术语和自然语言查询
-- 📚 **多模态支持**：处理PDF文档、图片、表格等多种格式的医疗资料
-- 🎯 **精准引用**：每个回答都标注来源文档和页码，可追溯验证
-- 📊 **可观测性**：完整的trace记录、评估指标和可视化dashboard
-- 🔌 **MCP集成**：支持作为MCP服务器被AI Agent调用
+- 🔍 **混合检索**：BM25 + 向量检索 + RRF 融合 + Cross-Encoder 重排序
+- 🎯 **Metadata Boost**：针对查询类型动态提升目标文档权重（传感器查询优先返回传感器文档）
+- 📚 **多模态支持**：处理 PDF、图片、表格等多种格式
+- 📎 **精准引用**：每个回答标注来源文档和页码，可追溯验证
+- 🔌 **MCP 集成**：支持作为 MCP 服务器被 AI Agent 调用
+- 📊 **可观测性**：完整的 trace 记录、评估指标和可视化 Dashboard
 
 ### 技术亮点
 
-- **模块化架构**：可插拔的LLM、Embedding、Reranker、向量数据库
-- **工程化实践**：完整的测试覆盖（单元/集成/E2E）、配置管理、日志追踪
-- **评估体系**：基于RAGAS的自动化评估，包含准确率、召回率等多维度指标
-- **增量更新**：支持文档增量摄取，避免重复处理
-
-## 🎯 应用场景
-
-| 场景 | 说明 | 示例 |
-|------|------|------|
-| 指南检索 | 快速查找WHO、行业标准等指南内容 | "WHO实验室质量管理体系的核心要素是什么？" |
-| SOP查询 | 检索标准操作流程和规范 | "样本管理的标准流程是什么？" |
-| 设备排障 | 查询设备手册和故障处理方法 | "Peloris 3组织处理仪如何进行日常维护？" |
-| 术语解释 | 解释专业术语和缩写 | "什么是IHC？" |
-| 培训支持 | 为新员工提供知识问答 | "质量控制的基本原则有哪些？" |
+- **模块化架构**：可插拔的 LLM、Embedding、Reranker、向量数据库
+- **领域适配**：通过配置和 metadata 标签快速切换知识领域
+- **工程化实践**：完整测试覆盖（单元/集成/E2E）、配置管理、日志追踪
+- **增量更新**：基于 SHA256 哈希的增量摄取，避免重复处理
 
 ## 🚀 快速开始
 
@@ -46,8 +41,8 @@ PathoMind 是一个基于 RAG（检索增强生成）技术的医疗知识助手
 
 ```bash
 # 1. 克隆仓库
-git clone https://github.com/yourusername/pathomind.git
-cd pathomind
+git clone https://github.com/yourusername/modular-rag-mcp-server.git
+cd modular-rag-mcp-server
 
 # 2. 创建虚拟环境
 python -m venv .venv
@@ -62,251 +57,140 @@ cp .env.example .env
 
 # 5. 配置设置
 cp config/settings.yaml.example config/settings.yaml
-# 根据需要调整配置
 ```
 
 ### 数据摄取
 
 ```bash
-# 摄取示例医疗文档
+# 医疗知识库
 python scripts/ingest.py \
   --collection medical_demo_v01 \
   --source demo-data/guidelines \
-  --config config/settings.medical_demo.local.yaml
+  --config config/settings.yaml
+
+# 自动驾驶知识库
+python scripts/ingest.py \
+  --collection ad_knowledge_v01 \
+  --source demo-data-ad/ \
+  --config config/settings.ad_knowledge.yaml
 ```
 
 ### 启动服务
 
 ```bash
-# 方式1: 命令行查询
-python scripts/query.py \
-  --collection medical_demo_v01 \
-  --query "WHO实验室质量管理体系的核心要素是什么？"
+# 命令行查询
+python scripts/query.py --collection medical_demo_v01 --query "WHO实验室质量管理体系的核心要素？"
+python scripts/query.py --collection ad_knowledge_v01 --query "激光雷达的探测距离和分辨率参数"
 
-# 方式2: 启动可视化Dashboard
+# 启动可视化 Dashboard
 python scripts/start_dashboard.py
 
-# 方式3: 启动MCP服务器（供AI Agent调用）
+# 启动 MCP 服务器（供 AI Agent 调用）
 python -m src.mcp_server.server
 ```
 
 ## 📊 系统架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                        用户查询                              │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    查询处理层                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ 查询分析     │  │ 意图识别     │  │ 范围提取     │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    混合检索层                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ BM25检索     │  │ 向量检索     │  │ RRF融合      │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    重排序层                                  │
-│  ┌──────────────┐  ┌──────────────┐                         │
-│  │ Cross-Encoder│  │ LLM Reranker │                         │
-│  └──────────────┘  └──────────────┘                         │
-└────────────────────────┬────────────────────────────────────┘
-                         │
-                         ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    响应生成层                                │
-│  ┌──────────────┐  ┌──────────────┐  ┌──────────────┐      │
-│  │ 上下文组装   │  │ LLM生成      │  │ 引用增强     │      │
-│  └──────────────┘  └──────────────┘  └──────────────┘      │
-└─────────────────────────────────────────────────────────────┘
+用户查询
+    ↓
+Query Analyzer      (复杂度检测、意图分类)
+    ↓
+Query Processor     (关键词提取、术语识别)
+    ↓
+Hybrid Search       (BM25 + Dense + RRF Fusion)
+    ↓
+Metadata Booster    (查询类型感知的权重提升)
+    ↓
+Document Grouper    (按来源文档分组)
+    ↓
+Reranker            (Cross-Encoder 重排序)
+    ↓
+Citation Enhancer   (引用元数据增强)
+    ↓
+Response Builder    (多文档综合响应)
+    ↓
+Boundary Validator  (边界控制：拒绝预测/诊断类查询)
+    ↓
+响应与引用
 ```
 
-## 🧪 测试与评估
-
-### 运行测试
+## 🧪 测试
 
 ```bash
-# 运行所有测试
-pytest
-
-# 运行单元测试
-pytest tests/unit/
+# 运行所有单元测试
+pytest tests/unit/ -v
 
 # 运行集成测试
-pytest tests/integration/
+pytest tests/integration/ -v
 
-# 运行E2E测试
-pytest tests/e2e/
+# 运行 E2E 测试
+pytest tests/e2e/ -v
 
-# 查看测试覆盖率
+# 查看覆盖率
 pytest --cov=src --cov-report=html
 ```
-
-### 评估系统性能
-
-```bash
-# 运行医疗场景评估
-python scripts/run_medical_evaluation.py
-
-# 查看评估结果
-python scripts/start_dashboard.py
-# 访问 http://localhost:8501 -> Medical Demo Evaluation
-```
-
-评估指标包括：
-- **Answer Correctness**: 答案准确性（0-1）
-- **Context Precision**: 检索精确度（0-1）
-- **Context Recall**: 检索召回率（0-1）
-- **Faithfulness**: 答案忠实度（0-1）
 
 ## 📁 项目结构
 
 ```
-pathomind/
-├── src/                          # 源代码
-│   ├── core/                     # 核心查询引擎
-│   │   ├── query_engine/         # 检索、融合、重排序
-│   │   └── response/             # 响应生成、引用增强
-│   ├── ingestion/                # 数据摄取管道
-│   │   ├── chunking/             # 文档分块
-│   │   ├── embedding/            # 向量编码
-│   │   └── storage/              # 存储管理
-│   ├── libs/                     # 可插拔组件库
-│   │   ├── llm/                  # LLM适配器
-│   │   ├── embedding/            # Embedding适配器
-│   │   ├── reranker/             # Reranker适配器
-│   │   └── vector_store/         # 向量数据库适配器
-│   ├── mcp_server/               # MCP服务器
-│   └── observability/            # 可观测性
-│       ├── dashboard/            # Streamlit Dashboard
-│       └── evaluation/           # 评估框架
-├── tests/                        # 测试代码
-│   ├── unit/                     # 单元测试
-│   ├── integration/              # 集成测试
-│   └── e2e/                      # 端到端测试
-├── config/                       # 配置文件
-├── demo-data/                    # 示例数据
-│   ├── guidelines/               # WHO指南
-│   ├── sops/                     # 标准操作流程
-│   ├── manuals/                  # 设备手册
-│   └── training/                 # 培训资料
-├── docs/                         # 文档
-│   └── specs/                    # 产品规格说明
-└── scripts/                      # 工具脚本
+.
+├── src/
+│   ├── core/
+│   │   ├── query_engine/       # 检索、融合、重排序、Metadata Boost
+│   │   └── response/           # 响应生成、引用增强、边界控制
+│   ├── ingestion/              # 文档摄取流水线
+│   ├── libs/                   # 可插拔组件（LLM、Embedding、Reranker）
+│   ├── mcp_server/             # MCP 服务器
+│   └── observability/          # Dashboard、评估、追踪
+├── tests/
+│   ├── unit/                   # 单元测试
+│   ├── integration/            # 集成测试
+│   └── e2e/                    # 端到端测试
+├── config/                     # 配置文件
+├── demo-data/                  # 医疗示例数据
+├── demo-data-ad/               # 自动驾驶示例数据
+├── docs/                       # 文档
+└── scripts/                    # 工具脚本
 ```
 
 ## 🔧 配置说明
 
-主要配置文件：`config/settings.yaml`
-
 ```yaml
-# LLM配置
+# config/settings.yaml 核心配置
 llm:
-  provider: openai  # openai, azure, ollama
+  provider: openai
   model: gpt-4o-mini
-  temperature: 0.1
 
-# Embedding配置
 embedding:
   provider: openai
   model: text-embedding-3-small
-  batch_size: 100
 
-# 检索配置
 retrieval:
   top_k: 20
   rerank_top_k: 5
   fusion_method: rrf
 
-# 向量数据库
 vector_store:
   provider: chroma
   persist_directory: data/db/chroma
 ```
 
-## 📈 性能指标
+## 🛡️ 边界控制
 
-基于医疗场景测试集（20个问题）的评估结果：
+系统明确**不做**以下事项：
+- ❌ 不做自动诊断或实时故障判断
+- ❌ 不提供预测性分析或未来趋势判断
+- ❌ 不替代专业人员决策
 
-| 指标 | P1版本 | 目标 |
-|------|--------|------|
-| Answer Correctness | 0.72 | 0.75+ |
-| Context Precision | 0.85 | 0.80+ |
-| Context Recall | 0.78 | 0.75+ |
-| Faithfulness | 0.88 | 0.85+ |
-
-## 🛡️ 合规边界
-
-本系统明确**不做**以下事项：
-- ❌ 不做自动诊断
-- ❌ 不给出高风险医疗决策建议
-- ❌ 不替代医生判断
-- ❌ 不输出无引用依据的医疗结论
-
-定位：**知识检索 + 培训支持 + 质控辅助 + 流程协同**
-
-## 🗺️ 技术路线图
-
-### P1 - 核心能力（已完成）
-- ✅ 混合检索（BM25 + Dense + RRF）
-- ✅ 多模态文档处理
-- ✅ 引用增强回答
-- ✅ 基础评估体系
-- ✅ MCP服务器
-
-### P2 - 增强能力（规划中）
-- 🔄 多轮对话支持
-- 🔄 查询改写与扩展
-- 🔄 文档分组与聚合
-- 🔄 高级评估指标
-- 🔄 性能优化
-
-详见：[P2 Roadmap](docs/specs/medical-assistant/P2_ROADMAP.md)
-
-## 📚 相关文档
-
-- [产品简报](docs/specs/medical-assistant/core/PRODUCT_BRIEF.md)
-- [产品需求文档](docs/specs/medical-assistant/core/PRD.md)
-- [开发规范](docs/specs/medical-assistant/core/DEVELOPMENT_SPEC.md)
-- [演示指南](docs/specs/medical-assistant/demo/DEMO_RUNBOOK_3MIN.md)
-- [完整技术文档](README_FULL.md)
-
-## 🤝 贡献指南
-
-欢迎提交Issue和Pull Request！
-
-1. Fork本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 开启Pull Request
+定位：**知识检索 + 文档引用 + 流程辅助**
 
 ## 📄 许可证
 
-本项目采用 MIT 许可证 - 详见 [LICENSE](LICENSE) 文件
+MIT License - 详见 [LICENSE](LICENSE)
 
 ## 👤 作者
 
 **King Doja**
-- 医疗AI应用开发者
-- 专注于RAG系统和AI Agent工程化
-- Email: [1477793103@qq.com]
 - GitHub: [@kingdoja]
-
-## 🙏 致谢
-
-- 感谢WHO提供的公开医疗指南文档
-- 感谢开源社区提供的优秀工具和框架
-
----
-
-**注意**：本项目仅用于技术展示和学习交流，不应用于实际临床决策。
+- Email: 1477793103@qq.com

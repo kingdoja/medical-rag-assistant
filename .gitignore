@@ -3,8 +3,9 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# Personal resume materials (not for public repo)
+# Personal resume and interview materials (not for public repo)
 简历/
+docs/specs/medical-assistant/interview/
 
 # C extensions
 *.so
@@ -157,6 +158,10 @@ evaluation_results*.json
 *.bak
 *.backup
 
+# Development task summaries and demo scripts
+TASK_*_COMPLETION_SUMMARY.md
+demo_*.py
+
 # Config files with credentials
 config/test_credentials.yaml
 config/settings.yaml.qa_backup
@@ -176,6 +181,7 @@ data/db/bm25/
 .kiro/
 .claude/
 .agents/
+.superpowers/
 
 # Test data
 test_data/

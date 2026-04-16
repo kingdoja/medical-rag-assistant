@@ -140,6 +140,36 @@ class ResponseBuilder:
         "what disease",
         "is this cancer",
         "does this mean i have",
+        # Autonomous driving real-time diagnostic patterns
+        "判断当前故障",
+        "判断当前",
+        "diagnose current fault",
+        "分析实时数据",
+        "analyze real-time data",
+        "诊断问题",
+        "诊断传感器",
+        "诊断故障",
+        "诊断系统",
+        "诊断算法",
+        "diagnose problem",
+        "是否故障",
+        "is it faulty",
+        "什么问题",
+        "what problem",
+        "如何修复",
+        "how to fix",
+        "当前是什么故障",
+        "current fault",
+        "实时诊断",
+        "real-time diagnosis",
+        "实时分析",
+        "real-time analysis",
+        "判断故障",
+        "diagnose fault",
+        "故障原因",
+        "fault cause",
+        "实时数据",
+        "real-time data",
     )
     
     _PREDICTIVE_PATTERNS: Tuple[str, ...] = (
@@ -158,6 +188,27 @@ class ResponseBuilder:
         "will happen",
         "most likely",
         "in the future",
+        # Autonomous driving predictive patterns
+        "下一代",
+        "next generation",
+        "未来趋势",
+        "future trend",
+        "发展方向",
+        "development direction",
+        "预判",
+        "预估",
+        "概率",
+        "probability",
+        "下一代技术",
+        "next-gen technology",
+        "未来发展",
+        "future development",
+        "技术趋势",
+        "technology trend",
+        "演进方向",
+        "evolution direction",
+        "最可能",
+        "most probable",
     )
     
     # Low relevance threshold for boundary checking
@@ -351,24 +402,63 @@ class ResponseBuilder:
         return BoundaryCheck(is_valid=True)
     
     def _generate_diagnostic_refusal_message(self, query: str) -> str:
-        """Generate refusal message for diagnostic queries."""
-        return (
-            f"查询 **\"{query}\"** 涉及诊断性或高风险医疗判断请求。\n"
-            "PathoMind 当前只提供知识检索、规范引用、培训和流程辅助，"
-            "不提供疾病诊断、病理结论或临床决策建议。"
-        )
+        """Generate refusal message for diagnostic queries.
+        
+        Adapts message based on domain (medical vs autonomous driving).
+        """
+        # Check if this is an AD-related query (contains AD-specific terms)
+        ad_terms = ["传感器", "sensor", "激光雷达", "lidar", "摄像头", "camera", 
+                    "雷达", "radar", "故障", "fault", "算法", "algorithm",
+                    "自动驾驶", "autonomous", "adas", "感知", "perception",
+                    "规划", "planning", "控制", "control", "实时", "real-time"]
+        is_ad_query = any(term in query.lower() for term in ad_terms)
+        
+        if is_ad_query:
+            return (
+                f"查询 **\"{query}\"** 涉及实时诊断请求。\n\n"
+                "自动驾驶知识检索系统当前只提供知识检索和文档引用，"
+                "不提供实时故障诊断或问题分析。\n\n"
+                "**建议改为查询：**\n"
+                "- 故障排查流程和方法\n"
+                "- 常见问题和解决方案\n"
+                "- 测试和验证规范"
+            )
+        else:
+            # Medical domain message
+            return (
+                f"查询 **\"{query}\"** 涉及诊断性或高风险医疗判断请求。\n\n"
+                "PathoMind 当前只提供知识检索、规范引用、培训和流程辅助，"
+                "不提供疾病诊断、病理结论或临床决策建议。"
+            )
     
     def _generate_predictive_refusal_message(self, query: str) -> str:
-        """Generate refusal message for predictive queries."""
-        return (
-            f"查询 **\"{query}\"** 涉及预测性分析请求。\n"
-            "PathoMind 当前只提供基于现有文档的事实性信息检索，"
-            "不提供预测、趋势分析或未来事件判断。\n\n"
-            "**建议改为查询：**\n"
-            "- 历史数据和已记录的案例\n"
-            "- 相关的指南、SOP 或培训材料\n"
-            "- 设备操作规范和质量控制流程"
-        )
+        """Generate refusal message for predictive queries.
+        
+        Adapts message based on domain (medical vs autonomous driving).
+        """
+        # Check if this is an AD-related query
+        ad_terms = ["传感器", "sensor", "激光雷达", "lidar", "摄像头", "camera",
+                    "雷达", "radar", "算法", "algorithm", "自动驾驶", "autonomous",
+                    "adas", "感知", "perception", "规划", "planning"]
+        is_ad_query = any(term in query.lower() for term in ad_terms)
+        
+        if is_ad_query:
+            return (
+                f"查询 **\"{query}\"** 涉及预测性分析请求。\n"
+                "自动驾驶知识检索系统当前只提供基于现有文档的事实性信息检索，"
+                "不提供预测、趋势分析或未来技术判断。"
+            )
+        else:
+            # Medical domain message
+            return (
+                f"查询 **\"{query}\"** 涉及预测性分析请求。\n"
+                "PathoMind 当前只提供基于现有文档的事实性信息检索，"
+                "不提供预测、趋势分析或未来事件判断。\n\n"
+                "**建议改为查询：**\n"
+                "- 历史数据和已记录的案例\n"
+                "- 相关的指南、SOP 或培训材料\n"
+                "- 设备操作规范和质量控制流程"
+            )
     
     def _generate_low_relevance_message(
         self, 
@@ -377,23 +467,40 @@ class ResponseBuilder:
     ) -> str:
         """Generate message for low-relevance scenarios."""
         if top_score is not None:
+            pct = f"{top_score * 100:.0f}%"
             return (
-                f"查询 **\"{query}\"** 的检索结果相关度较低（最高相关度: {top_score:.2%}）。\n"
+                f"查询 **\"{query}\"** 的检索结果相关度较低（最高相关度: {pct}）。\n"
                 "当前知识库中可能没有直接相关的资料。"
             )
         return f"查询 **\"{query}\"** 未找到相关结果。\n当前知识库中可能没有相关的资料。"
     
     def _get_diagnostic_alternatives(self) -> List[str]:
-        """Get alternative suggestions for diagnostic queries."""
+        """Get alternative suggestions for diagnostic queries.
+        
+        Returns domain-appropriate alternatives.
+        """
+        # Return AD-specific alternatives (will be used for AD queries)
+        # Medical alternatives are kept for backward compatibility
         return [
+            "故障排查流程和方法是什么？",
+            "常见问题和解决方案有哪些？",
+            "测试和验证规范是什么？",
             "这个结果相关的 SOP、指南或说明书依据是什么？",
             "遇到类似情况时，实验室内部要求的复核或上报流程是什么？",
             "当前知识库里有哪些资料可以帮助人工复核？",
         ]
     
     def _get_predictive_alternatives(self) -> List[str]:
-        """Get alternative suggestions for predictive queries."""
+        """Get alternative suggestions for predictive queries.
+        
+        Returns domain-appropriate alternatives.
+        """
+        # Return AD-specific alternatives (will be used for AD queries)
+        # Medical alternatives are kept for backward compatibility
         return [
+            "当前技术的原理和实现方法是什么？",
+            "已有的技术方案和案例有哪些？",
+            "相关的标准和测试规范是什么？",
             "查询相关的历史数据和已记录案例",
             "查找相关的指南、SOP 或培训材料",
             "了解设备操作规范和质量控制流程",
@@ -401,11 +508,16 @@ class ResponseBuilder:
         ]
     
     def _get_low_relevance_alternatives(self) -> List[str]:
-        """Get alternative suggestions for low-relevance queries."""
+        """Get alternative suggestions for low-relevance queries.
+        
+        Returns domain-appropriate alternatives.
+        """
+        # Universal alternatives that work for both domains
         return [
             "尝试使用更具体的关键词或术语",
             "确认相关资料是否已经完成导入（ingest）",
             "如果问题涉及设备或流程，请包含设备名称或流程名称",
+            "如果问题涉及特定传感器或算法，请包含名称",
             "尝试将复杂问题拆分为多个简单问题",
         ]
     

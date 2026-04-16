@@ -170,3 +170,200 @@ class TestQueryAnalyzer:
         
         assert analysis2.complexity == "multi_part"
         assert len(analysis2.sub_queries) >= 2
+
+
+class TestADTermRecognition:
+    """Test suite for autonomous driving term recognition."""
+    
+    def test_sensor_term_detection(self):
+        """Test detection of sensor-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        # Test Chinese sensor terms
+        analysis = analyzer.analyze("摄像头的分辨率是多少？")
+        assert "摄像头" in analysis.detected_terms
+        assert "分辨率" in analysis.detected_terms
+        assert analysis.term_types["摄像头"] == "sensor"
+        assert analysis.term_types["分辨率"] == "sensor"
+        
+        # Test English sensor terms
+        analysis2 = analyzer.analyze("What is the camera resolution?")
+        assert "camera" in analysis2.detected_terms
+        assert "resolution" in analysis2.detected_terms
+        assert analysis2.term_types["camera"] == "sensor"
+    
+    def test_lidar_term_detection(self):
+        """Test detection of LiDAR-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        # Test Chinese
+        analysis = analyzer.analyze("激光雷达的探测距离是多少？")
+        assert "激光雷达" in analysis.detected_terms
+        assert "探测距离" in analysis.detected_terms
+        assert analysis.term_types["激光雷达"] == "sensor"
+        
+        # Test English
+        analysis2 = analyzer.analyze("What is the LiDAR detection range?")
+        assert "lidar" in analysis2.detected_terms
+        assert "detection range" in analysis2.detected_terms
+    
+    def test_radar_term_detection(self):
+        """Test detection of radar-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        analysis = analyzer.analyze("毫米波雷达的视场角是多少？")
+        assert "毫米波雷达" in analysis.detected_terms
+        assert "视场角" in analysis.detected_terms
+        assert analysis.term_types["毫米波雷达"] == "sensor"
+    
+    def test_algorithm_term_detection(self):
+        """Test detection of algorithm-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        # Perception algorithm
+        analysis = analyzer.analyze("目标检测算法的原理是什么？")
+        assert "目标检测" in analysis.detected_terms
+        assert analysis.term_types["目标检测"] == "algorithm"
+        
+        # Planning algorithm
+        analysis2 = analyzer.analyze("路径规划算法如何实现？")
+        assert "路径规划" in analysis2.detected_terms
+        assert analysis2.term_types["路径规划"] == "algorithm"
+        
+        # Control algorithm
+        analysis3 = analyzer.analyze("PID控制器的参数如何调优？")
+        assert "pid" in analysis3.detected_terms
+        assert analysis3.term_types["pid"] == "algorithm"
+    
+    def test_system_term_detection(self):
+        """Test detection of system-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        # ADAS
+        analysis = analyzer.analyze("ADAS系统包含哪些功能？")
+        assert "adas" in analysis.detected_terms
+        assert analysis.term_types["adas"] == "system"
+        
+        # ODD
+        analysis2 = analyzer.analyze("ODD的定义是什么？")
+        assert "odd" in analysis2.detected_terms
+        assert analysis2.term_types["odd"] == "system"
+        
+        # V2X
+        analysis3 = analyzer.analyze("V2X通信协议有哪些？")
+        assert "v2x" in analysis3.detected_terms
+        assert analysis3.term_types["v2x"] == "system"
+    
+    def test_regulation_term_detection(self):
+        """Test detection of regulation-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        # GB/T standard
+        analysis = analyzer.analyze("GB/T自动驾驶分级标准是什么？")
+        assert "gb/t" in analysis.detected_terms
+        assert analysis.term_types["gb/t"] == "regulation"
+        
+        # ISO 26262
+        analysis2 = analyzer.analyze("ISO 26262功能安全标准的要求是什么？")
+        assert "iso 26262" in analysis2.detected_terms
+        assert "功能安全" in analysis2.detected_terms
+        assert analysis2.term_types["iso 26262"] == "regulation"
+    
+    def test_mixed_language_query(self):
+        """Test support for mixed Chinese-English queries."""
+        analyzer = QueryAnalyzer()
+        
+        # Mixed query
+        analysis = analyzer.analyze("LiDAR的探测距离是多少？")
+        assert "lidar" in analysis.detected_terms
+        assert "探测距离" in analysis.detected_terms
+        
+        # Another mixed query
+        analysis2 = analyzer.analyze("Camera分辨率和帧率的关系")
+        assert "camera" in analysis2.detected_terms
+        assert "分辨率" in analysis2.detected_terms
+        assert "帧率" in analysis2.detected_terms
+    
+    def test_synonym_mapping(self):
+        """Test synonym mapping functionality."""
+        analyzer = QueryAnalyzer()
+        
+        # Test LiDAR synonyms
+        synonyms = analyzer.get_synonyms("激光雷达")
+        assert "lidar" in synonyms
+        
+        synonyms2 = analyzer.get_synonyms("LiDAR")
+        assert "激光雷达" in synonyms2
+        
+        # Test camera synonyms
+        synonyms3 = analyzer.get_synonyms("摄像头")
+        assert "camera" in synonyms3
+        assert "相机" in synonyms3
+        
+        # Test radar synonyms
+        synonyms4 = analyzer.get_synonyms("毫米波雷达")
+        assert "radar" in synonyms4
+        
+        # Test ADAS synonyms
+        synonyms5 = analyzer.get_synonyms("ADAS")
+        assert "高级驾驶辅助系统" in synonyms5
+    
+    def test_multiple_term_types(self):
+        """Test detection of multiple term types in one query."""
+        analyzer = QueryAnalyzer()
+        
+        # Query with sensor and algorithm terms
+        analysis = analyzer.analyze("摄像头的目标检测算法如何实现？")
+        assert "摄像头" in analysis.detected_terms
+        assert "目标检测" in analysis.detected_terms
+        assert analysis.term_types["摄像头"] == "sensor"
+        assert analysis.term_types["目标检测"] == "algorithm"
+        
+        # Query with system and regulation terms
+        analysis2 = analyzer.analyze("ADAS系统需要符合ISO 26262标准吗？")
+        assert "adas" in analysis2.detected_terms
+        assert "iso 26262" in analysis2.detected_terms
+        assert analysis2.term_types["adas"] == "system"
+        assert analysis2.term_types["iso 26262"] == "regulation"
+    
+    def test_case_insensitive_detection(self):
+        """Test that term detection is case-insensitive."""
+        analyzer = QueryAnalyzer()
+        
+        # Test uppercase
+        analysis = analyzer.analyze("LIDAR的性能如何？")
+        assert "lidar" in analysis.detected_terms
+        
+        # Test mixed case
+        analysis2 = analyzer.analyze("Camera和Radar的对比")
+        assert "camera" in analysis2.detected_terms
+        assert "radar" in analysis2.detected_terms
+    
+    def test_calibration_terms(self):
+        """Test detection of calibration-related terms."""
+        analyzer = QueryAnalyzer()
+        
+        analysis = analyzer.analyze("摄像头内参标定的步骤是什么？")
+        assert "摄像头" in analysis.detected_terms
+        assert "标定" in analysis.detected_terms
+        assert analysis.term_types["标定"] == "sensor"
+    
+    def test_no_terms_detected(self):
+        """Test queries with no AD terms."""
+        analyzer = QueryAnalyzer()
+        
+        analysis = analyzer.analyze("今天天气怎么样？")
+        assert len(analysis.detected_terms) == 0
+        assert len(analysis.term_types) == 0
+    
+    def test_term_detection_with_complex_query(self):
+        """Test term detection in complex queries."""
+        analyzer = QueryAnalyzer()
+        
+        # Comparison query with multiple terms
+        analysis = analyzer.analyze("激光雷达和毫米波雷达在感知算法中的应用有什么不同？")
+        assert "激光雷达" in analysis.detected_terms
+        assert "毫米波雷达" in analysis.detected_terms
+        assert "感知" in analysis.detected_terms
+        assert analysis.complexity == "comparison"
+        assert len(analysis.detected_terms) >= 3

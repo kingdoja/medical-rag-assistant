@@ -1,0 +1,339 @@
+# Autonomous Driving Knowledge Retrieval System - Configuration
+# This configuration file is specifically for the AD knowledge base (ad_knowledge_v01)
+
+# =============================================================================
+# LLM Configuration
+# =============================================================================
+llm:
+  provider: "openai"
+  model: "qwen-plus"
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: null  # Read from OPENAI_API_KEY in .env/environment
+  temperature: 0.0
+  max_tokens: 4096
+
+# =============================================================================
+# Embedding Configuration
+# =============================================================================
+embedding:
+  provider: "openai"
+  model: "text-embedding-v3"
+  dimensions: 1024
+  base_url: "https://dashscope.aliyuncs.com/compatible-mode/v1"
+  api_key: null  # Read from OPENAI_API_KEY in .env/environment
+
+# =============================================================================
+# Vision LLM Configuration (for Image Captioning in AD documents)
+# =============================================================================
+vision_llm:
+  enabled: true  # Enable for processing images in AD documents (sensor diagrams, etc.)
+  provider: "openai"
+  model: "gpt-4o"
+  api_key: null
+  max_image_size: 2048
+
+# =============================================================================
+# Vector Store Configuration
+# =============================================================================
+vector_store:
+  provider: "chroma"
+  persist_directory: "./data/db/chroma"
+  collection_name: "ad_knowledge_v01"  # AD-specific collection
+
+# =============================================================================
+# Retrieval Configuration
+# =============================================================================
+retrieval:
+  dense_top_k: 20
+  sparse_top_k: 20
+  fusion_top_k: 10
+  rrf_k: 60
+
+# =============================================================================
+# Rerank Configuration
+# =============================================================================
+rerank:
+  enabled: true  # Enable reranking for better AD query results
+  provider: "cross_encoder"
+  model: "BAAI/bge-reranker-base"
+  top_k: 5
+
+# =============================================================================
+# Metadata Boost Configuration (NEW for AD system)
+# =============================================================================
+metadata_boost:
+  enabled: true
+  # Boost weights for different query types
+  sensor_query:
+    sensor_doc: 1.5      # Boost sensor documents for sensor queries
+    algorithm_doc: 0.8   # Reduce algorithm document weight
+    regulation_doc: 0.9
+    test_doc: 0.9
+  algorithm_query:
+    algorithm_doc: 1.3   # Boost algorithm documents for algorithm queries
+    sensor_doc: 0.9
+    regulation_doc: 0.9
+    test_doc: 0.9
+  regulation_query:
+    regulation_doc: 1.6  # Boost regulation documents for regulation queries
+    test_doc: 1.2        # Also boost test documents (often related)
+    sensor_doc: 0.8
+    algorithm_doc: 0.8
+  test_query:
+    test_doc: 1.4        # Boost test documents for test queries
+    regulation_doc: 1.1  # Also boost regulations (test standards)
+    sensor_doc: 0.9
+    algorithm_doc: 0.9
+
+# =============================================================================
+# Document Authority Scores (for citation ranking)
+# =============================================================================
+document_authority:
+  regulation_doc: 1.0    # Highest authority (standards, regulations)
+  algorithm_doc: 0.8     # High authority (technical documentation)
+  sensor_doc: 0.6        # Medium authority (specifications)
+  test_doc: 0.4          # Lower authority (test reports)
+
+# =============================================================================
+# Ingestion Configuration
+# =============================================================================
+ingestion:
+  chunk_size: 800        # Smaller chunks for better precision
+  chunk_overlap: 200
+  splitter: "recursive"
+  batch_size: 100
+  
+  # Chunk Refiner Configuration
+  chunk_refiner:
+    use_llm: true
+    max_workers: 2
+    max_llm_chunks: 8
+  
+  # Metadata Enricher Configuration
+  metadata_enricher:
+    use_llm: true
+    max_workers: 2
+    max_llm_chunks: 8
+  
+  # Document type detection patterns
+  document_type_patterns:
+    sensor_doc:
+      - "传感器"
+      - "sensor"
+      - "摄像头"
+      - "camera"
+      - "激光雷达"
+      - "lidar"
+      - "毫米波雷达"
+      - "radar"
+      - "超声波"
+      - "ultrasonic"
+      - "规格书"
+      - "specification"
+      - "标定"
+      - "calibration"
+    algorithm_doc:
+      - "算法"
+      - "algorithm"
+      - "感知"
+      - "perception"
+      - "规划"
+      - "planning"
+      - "控制"
+      - "control"
+      - "SLAM"
+      - "目标检测"
+      - "object detection"
+    regulation_doc:
+      - "GB/T"
+      - "ISO"
+      - "标准"
+      - "standard"
+      - "法规"
+      - "regulation"
+      - "规范"
+      - "specification"
+      - "测试规程"
+      - "test procedure"
+    test_doc:
+      - "测试"
+      - "test"
+      - "场景"
+      - "scenario"
+      - "用例"
+      - "case"
+      - "验证"
+      - "validation"
+      - "功能测试"
+      - "functional test"
+      - "安全测试"
+      - "safety test"
+
+# =============================================================================
+# Query Analysis Configuration (for AD-specific terms)
+# =============================================================================
+query_analysis:
+  # Sensor-related terms
+  sensor_terms:
+    - "摄像头"
+    - "camera"
+    - "激光雷达"
+    - "lidar"
+    - "毫米波雷达"
+    - "radar"
+    - "超声波"
+    - "ultrasonic"
+    - "分辨率"
+    - "resolution"
+    - "帧率"
+    - "frame rate"
+    - "视场角"
+    - "FOV"
+    - "探测距离"
+    - "detection range"
+    - "标定"
+    - "calibration"
+  
+  # Algorithm-related terms
+  algorithm_terms:
+    - "感知"
+    - "perception"
+    - "规划"
+    - "planning"
+    - "控制"
+    - "control"
+    - "SLAM"
+    - "目标检测"
+    - "object detection"
+    - "车道线"
+    - "lane"
+    - "障碍物"
+    - "obstacle"
+    - "路径规划"
+    - "path planning"
+    - "轨迹"
+    - "trajectory"
+    - "PID"
+    - "MPC"
+  
+  # Regulation-related terms
+  regulation_terms:
+    - "GB/T"
+    - "ISO 26262"
+    - "标准"
+    - "standard"
+    - "法规"
+    - "regulation"
+    - "ASIL"
+    - "功能安全"
+    - "functional safety"
+    - "测试规范"
+    - "test specification"
+  
+  # Test-related terms
+  test_terms:
+    - "测试"
+    - "test"
+    - "场景"
+    - "scenario"
+    - "用例"
+    - "case"
+    - "跟车"
+    - "following"
+    - "变道"
+    - "lane change"
+    - "超车"
+    - "overtaking"
+    - "紧急制动"
+    - "emergency braking"
+  
+  # Synonym mappings (for query expansion)
+  synonyms:
+    "激光雷达": ["lidar", "LiDAR"]
+    "摄像头": ["camera", "相机"]
+    "毫米波雷达": ["radar", "雷达"]
+    "自动驾驶": ["autonomous driving", "AD", "自动驾驶"]
+    "ADAS": ["高级驾驶辅助系统", "advanced driver assistance"]
+    "ODD": ["设计运行条件", "operational design domain"]
+    "V2X": ["车联网", "vehicle to everything"]
+
+# =============================================================================
+# Boundary Validation Configuration
+# =============================================================================
+boundary_validation:
+  enabled: true
+  
+  # Predictive query patterns (should be refused)
+  predictive_patterns:
+    - "预测"
+    - "predict"
+    - "预计"
+    - "预期"
+    - "下一代"
+    - "next generation"
+    - "未来趋势"
+    - "future trend"
+    - "发展方向"
+    - "development direction"
+  
+  # Diagnostic query patterns (should be refused)
+  diagnostic_patterns:
+    - "判断当前故障"
+    - "diagnose current fault"
+    - "分析实时数据"
+    - "analyze real-time data"
+    - "诊断问题"
+    - "diagnose problem"
+    - "是否故障"
+    - "is it faulty"
+  
+  # Low relevance threshold
+  low_relevance_threshold: 0.3
+
+# =============================================================================
+# Observability Configuration
+# =============================================================================
+observability:
+  log_level: "INFO"
+  trace_enabled: true
+  trace_file: "./logs/ad_knowledge_traces.jsonl"
+  structured_logging: true
+  
+  # Metrics to track
+  metrics:
+    - "query_count"
+    - "response_time"
+    - "relevance_score"
+    - "citation_rate"
+    - "document_diversity"
+    - "boost_application_rate"
+    - "boundary_refusal_rate"
+
+# =============================================================================
+# Evaluation Configuration
+# =============================================================================
+evaluation:
+  enabled: true
+  provider: "custom"
+  
+  # Core scenarios for AD system
+  core_scenarios:
+    - "sensor_query"
+    - "algorithm_query"
+    - "regulation_query"
+    - "test_query"
+    - "sensor_comparison"
+    - "algorithm_comparison"
+    - "multi_sensor_fusion"
+    - "predictive_refusal"
+  
+  # Pass rate threshold
+  pass_rate_threshold: 0.8  # >= 80% pass rate required
+  
+  # Metrics
+  metrics:
+    - "hit_rate"
+    - "mrr"
+    - "citation_rate"
+    - "document_diversity"
+    - "response_time"

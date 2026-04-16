@@ -1,0 +1,29 @@
+{
+  "document_type": "test_doc",
+  "test_type": "functional",
+  "test_category": "following",
+  "scenario_name": "ACC跟车场景",
+  "version": "v1.0",
+  "description": "自适应巡航控制（ACC）跟车场景测试用例",
+  "test_conditions": {
+    "speed_range": "30-120 km/h",
+    "following_distance": "2-4 秒",
+    "weather": "晴天、干燥路面",
+    "traffic": "中等流量"
+  },
+  "test_steps": [
+    "1. 激活 ACC 功能",
+    "2. 设置目标速度为 80 km/h",
+    "3. 前车以 60 km/h 行驶",
+    "4. 验证本车自动减速至 60 km/h",
+    "5. 验证保持安全跟车距离",
+    "6. 前车加速至 80 km/h",
+    "7. 验证本车自动加速至 80 km/h"
+  ],
+  "expected_results": {
+    "following_distance": "保持 2-4 秒跟车距离",
+    "speed_tracking": "速度误差 < 5 km/h",
+    "comfort": "加速度 < 2 m/s²"
+  },
+  "pass_criteria": "所有测试步骤通过，无安全事件"
+}
